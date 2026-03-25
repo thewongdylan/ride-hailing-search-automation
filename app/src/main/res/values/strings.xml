@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Ride Hailing Search Automation</string>
+    <string name="app_title">Ride Hailing Search</string>
+    <string name="destination_field">Enter your destination</string>
 </resources>
