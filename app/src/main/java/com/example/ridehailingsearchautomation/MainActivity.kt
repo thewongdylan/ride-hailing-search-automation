@@ -195,6 +195,7 @@ fun RHSAApp(
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Grab logo
                 Image(
                     painter = painterResource(R.drawable.grab_logo),
                     contentDescription = "Grab Logo",
@@ -205,6 +206,7 @@ fun RHSAApp(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center
                 ) {
+                    // Current Grab fare
                     Text(
                         text = "${stringResource(R.string.current_fare)}: ${grabPriceState.value}",
                         fontWeight = FontWeight.Bold,
@@ -212,6 +214,7 @@ fun RHSAApp(
                         lineHeight = 14.sp
                     )
 
+                    // Last updated at
                     Text(
                         text = "${stringResource(R.string.last_updated_at)}: ${lastUpdatedGrabState.value}",
                         fontStyle = FontStyle.Italic,
@@ -221,15 +224,18 @@ fun RHSAApp(
                         lineHeight = 14.sp
                     )
                 }
-                Button(
-                    onClick = { switchToGrab(context) },
-                    modifier = Modifier.padding( vertical = 8.dp),
-                    contentPadding = PaddingValues(
-                        horizontal = 12.dp,
-                        vertical = 6.dp
-                    )
-                ) {
-                    Text("Open Grab")
+                // Open Grab button
+                if (lastSearchedDestination.value.isNotBlank()) {
+                    Button(
+                        onClick = { switchToGrab(context) },
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        contentPadding = PaddingValues(
+                            horizontal = 12.dp,
+                            vertical = 6.dp
+                        )
+                    ) {
+                        Text("Open Grab")
+                    }
                 }
             }
         }
