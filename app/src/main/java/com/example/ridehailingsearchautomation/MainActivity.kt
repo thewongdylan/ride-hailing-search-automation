@@ -1,6 +1,7 @@
 package com.example.ridehailingsearchautomation
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -14,13 +15,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -41,23 +47,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.ridehailingsearchautomation.ui.theme.RideHailingSearchAutomationTheme
 import androidx.core.net.toUri
 
+private var TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
 
     private var grabPriceState = mutableStateOf("No Grab price fetched yet")
+    private var lastUpdatedGrabState = mutableStateOf("")
     private val grabPriceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val price = intent?.getStringExtra("price_value")
-            Log.d("Ride", "MainActivity received broadcast: $price")
+            Log.d(TAG, "MainActivity received broadcast: $price")
             if (price != null) {
                 grabPriceState.value = price
+                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                lastUpdatedGrabState.value = "$currentTime"
             }
 
         }
@@ -67,7 +81,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        Log.d("Ride", "onCreate called")
+        Log.d(TAG, "onCreate called")
 
         val filter = IntentFilter("COM_EXAMPLE_GRAB_PRICE_UPDATE")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -79,7 +93,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             RideHailingSearchAutomationTheme {
                 RHSAApp(
-                    grabPriceState = grabPriceState
+                    grabPriceState = grabPriceState,
+                    lastUpdatedGrabState = lastUpdatedGrabState
                 )
             }
         }
@@ -87,36 +102,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // UNREGISTER HERE: Clean up when the app is actually killed
         try {
             unregisterReceiver(grabPriceReceiver)
         } catch (e: Exception) {
-            Log.e("Ride", "Receiver already unregistered")
+            Log.e(TAG, "Receiver already unregistered")
         }
     }
-
-//    @RequiresApi(Build.VERSION_CODES.O)
-//    override fun onResume() {
-//        super.onResume()
-//        registerReceiver(
-//            grabPriceReceiver,
-//            IntentFilter("COM_EXAMPLE_GRAB_PRICE_UPDATE"),
-//            RECEIVER_EXPORTED
-//        )
-//    }
-//
-//    override fun onPause () {
-//        super.onPause()
-//        unregisterReceiver(grabPriceReceiver)
-//    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RHSAApp(
     grabPriceState: MutableState<String>,
+    lastUpdatedGrabState: MutableState<String>,
 //    gojekPriceState: MutableState<String>,
+//    lastUpdatedGojekState: MutableState<String>,
 //    tadaPriceState: MutableState<String>,
+//    lastUpdatedTadaState: MutableState<String>,
     modifier: Modifier = Modifier
 ) {
     var destination by remember { mutableStateOf("") }
@@ -171,12 +173,43 @@ fun RHSAApp(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Grab price display
-            Text(
-                text = "Current Fare: ${grabPriceState.value}",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.grab_logo),
+                    contentDescription = "Grab Logo",
+                    modifier = Modifier.size(45.dp)
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        text = "Current Grab Fare: ${grabPriceState.value}",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+
+                    Text(
+                        text = "Last updated at: ${lastUpdatedGrabState.value}",
+                        fontStyle = FontStyle.Italic,
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Left,
+                        modifier = Modifier.fillMaxWidth().padding(top = 0.dp)
+                    )
+                }
+                Button(
+                    onClick = { switchToGrab(context) },
+                    modifier = Modifier.padding(vertical = 8.dp)
+                ) {
+                    Text("Open Grab")
+                }
+            }
         }
     }
 }
@@ -196,14 +229,34 @@ fun openGrab(context: Context, destination: String) {
     }
 }
 
+fun switchToGrab(context: Context) {
+    val grabPackage = "com.grabtaxi.passenger"
+    val intent = context.packageManager.getLaunchIntentForPackage(grabPackage)
+
+    if (intent != null) {
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not switch to Grab", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Could not switch to Grab")
+        }
+    } else {
+        Log.d(TAG, "Grab app not found")
+    }
+}
+
 
 @Preview(showBackground = true)
 @Composable
 fun RHSAPreview() {
     val grabPriceState = remember { mutableStateOf("No Grab price fetched yet")}
+    val lastUpdatedGrabState = remember { mutableStateOf("")}
+
     RideHailingSearchAutomationTheme {
         RHSAApp(
-            grabPriceState
+            grabPriceState,
+            lastUpdatedGrabState
         )
     }
 }
