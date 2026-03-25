@@ -1,12 +1,10 @@
 package com.example.ridehailingsearchautomation
 
 import android.annotation.SuppressLint
-import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -18,9 +16,9 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -49,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,8 +59,8 @@ import androidx.core.net.toUri
 
 private var TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
-
-    private var grabPriceState = mutableStateOf("No Grab price fetched yet")
+    private var lastSearchedDestination = mutableStateOf("")
+    private var grabPriceState = mutableStateOf("-")
     private var lastUpdatedGrabState = mutableStateOf("")
     private val grabPriceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -77,6 +75,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,15 +83,12 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onCreate called")
 
         val filter = IntentFilter("COM_EXAMPLE_GRAB_PRICE_UPDATE")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            registerReceiver(grabPriceReceiver, filter, RECEIVER_EXPORTED)
-        } else {
-            registerReceiver(grabPriceReceiver, filter)
-        }
+        registerReceiver(grabPriceReceiver, filter, RECEIVER_EXPORTED)
 
         setContent {
             RideHailingSearchAutomationTheme {
                 RHSAApp(
+                    lastSearchedDestination = lastSearchedDestination,
                     grabPriceState = grabPriceState,
                     lastUpdatedGrabState = lastUpdatedGrabState
                 )
@@ -102,17 +98,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try {
-            unregisterReceiver(grabPriceReceiver)
-        } catch (e: Exception) {
-            Log.e(TAG, "Receiver already unregistered")
-        }
+        unregisterReceiver(grabPriceReceiver)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RHSAApp(
+    lastSearchedDestination: MutableState<String>,
     grabPriceState: MutableState<String>,
     lastUpdatedGrabState: MutableState<String>,
 //    gojekPriceState: MutableState<String>,
@@ -123,6 +116,7 @@ fun RHSAApp(
 ) {
     var destination by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val fetchingPriceText = stringResource(R.string.fetching_price)
 
     Scaffold(
         topBar = {
@@ -140,7 +134,7 @@ fun RHSAApp(
         }
     ) { innerPadding ->
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(innerPadding)
@@ -153,7 +147,7 @@ fun RHSAApp(
             OutlinedTextField(
                 value = destination,
                 onValueChange = { destination = it},
-                label = { Text("Enter destination here") }
+                label = { Text(stringResource(R.string.enter_destination_field)) }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -162,12 +156,33 @@ fun RHSAApp(
             Button(
                 onClick = {
                     if (destination.isNotBlank()) {
-                        grabPriceState.value = "Fetching Grab price..."
+                        grabPriceState.value = fetchingPriceText
+                        lastSearchedDestination.value = destination
                         openGrab(context, destination)
                     }
                 }
             ) {
                 Text("Search")
+            }
+
+            // Last searched destination
+            if (lastSearchedDestination.value.isNotBlank()) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Results for: ${lastSearchedDestination.value}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -176,7 +191,7 @@ fun RHSAApp(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 28.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -188,24 +203,31 @@ fun RHSAApp(
 
                 Column(
                     modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "Current Grab Fare: ${grabPriceState.value}",
+                        text = "${stringResource(R.string.current_fare)}: ${grabPriceState.value}",
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 16.dp)
+                        fontSize = 20.sp,
+                        lineHeight = 14.sp
                     )
 
                     Text(
-                        text = "Last updated at: ${lastUpdatedGrabState.value}",
+                        text = "${stringResource(R.string.last_updated_at)}: ${lastUpdatedGrabState.value}",
                         fontStyle = FontStyle.Italic,
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         textAlign = TextAlign.Left,
-                        modifier = Modifier.fillMaxWidth().padding(top = 0.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        lineHeight = 14.sp
                     )
                 }
                 Button(
                     onClick = { switchToGrab(context) },
-                    modifier = Modifier.padding(vertical = 8.dp)
+                    modifier = Modifier.padding( vertical = 8.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = 12.dp,
+                        vertical = 6.dp
+                    )
                 ) {
                     Text("Open Grab")
                 }
@@ -226,6 +248,7 @@ fun openGrab(context: Context, destination: String) {
         context.startActivity(intent)
     } catch (e: Exception) {
         Toast.makeText(context, "Grab app not found", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "Grab app not found, $e")
     }
 }
 
@@ -239,7 +262,7 @@ fun switchToGrab(context: Context) {
             context.startActivity(intent)
         } catch (e: Exception) {
             Toast.makeText(context, "Could not switch to Grab", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Could not switch to Grab")
+            Log.d(TAG, "Could not switch to Grab, $e")
         }
     } else {
         Log.d(TAG, "Grab app not found")
@@ -250,11 +273,13 @@ fun switchToGrab(context: Context) {
 @Preview(showBackground = true)
 @Composable
 fun RHSAPreview() {
-    val grabPriceState = remember { mutableStateOf("No Grab price fetched yet")}
+    val lastSearchedDestination = remember { mutableStateOf("")}
+    val grabPriceState = remember { mutableStateOf("-")}
     val lastUpdatedGrabState = remember { mutableStateOf("")}
 
     RideHailingSearchAutomationTheme {
         RHSAApp(
+            lastSearchedDestination,
             grabPriceState,
             lastUpdatedGrabState
         )

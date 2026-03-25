@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">Ride Hailing Search Automation</string>
     <string name="app_title">Ride Hailing Search</string>
-    <string name="destination_field">Enter your destination</string>
+    <string name="enter_destination_field">Enter destination here</string>
+    <string name="current_fare">Current fare</string>
+    <string name="fetching_price">Fetching price...</string>
+    <string name="last_updated_at">Last updated at</string>
 </resources>
