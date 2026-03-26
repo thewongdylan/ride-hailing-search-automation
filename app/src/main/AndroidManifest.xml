@@ -8,6 +8,7 @@
 
     <queries>
         <package android:name="com.grabtaxi.passenger" />
+        <package android:name="com.gojek.app" />
     </queries>
 
     <application
@@ -33,6 +34,20 @@
 
         <service
             android:name=".GrabRideScraperService"
+            android:label="RHSA Grab Scraper"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <service
+            android:name=".GojekRideScraperService"
+            android:label="RHSA Gojek Scraper"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
             <intent-filter>

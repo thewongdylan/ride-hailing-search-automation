@@ -8,12 +8,15 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
-class GrabRideScraperService : AccessibilityService() {
-    private val TAG = "GrabRideScraperService"
+class GojekRideScraperService : AccessibilityService() {
+    private val TAG = "GojekRideScraperService"
+    private val packageName = "com.gojek.app"
     private enum class AutomationState { IDLE, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
     private var currState = AutomationState.IDLE
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var isClickPending = false
     companion object {
         var destinationToType: String? = null
         private var lastProcessedDestination : String? = null
@@ -31,15 +34,15 @@ class GrabRideScraperService : AccessibilityService() {
             resultsVisibleStartTime = 0L
         }
 
-        // Reset if user leaves Grab
-        if (currPackage != "com.grabtaxi.passenger" && currState != AutomationState.IDLE) {
-            Log.d(TAG, "User left Grab, resetting state")
+        // Reset if user leaves Gojek
+        if (currPackage != packageName && currState != AutomationState.IDLE) {
+            Log.d(TAG, "User left Gojek, resetting state")
             currState = AutomationState.IDLE
             return
         }
 
-        // State machine: handle states within Grab app
-        if (currPackage == "com.grabtaxi.passenger") {
+        // State machine: handle states within Gojek app
+        if (currPackage == packageName) {
             when (currState) {
                 AutomationState.IDLE -> {
                     if (destinationToType != null) navigateToSearch(rootNode)
@@ -61,13 +64,14 @@ class GrabRideScraperService : AccessibilityService() {
     }
 
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
-        if (currState != AutomationState.IDLE) return
-        val grabTextView = findGrabTextView(rootNode)
-        if (grabTextView != null) {
-            val clickableParent = findClickableParent(grabTextView)
-            clickableParent?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val searchBars = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131368260")
+        if (searchBars.isNotEmpty()) {
+            Log.d(TAG, "Found search bar")
+            searchBars[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            Log.d(TAG, "Clicked on search bar")
             currState = AutomationState.TYPING
-            Log.d(TAG, "Clicked Grab TextView")
+        } else {
+            Log.d(TAG, "Could not find search bar")
         }
     }
     private fun enterDestination(rootNode: AccessibilityNodeInfo, destination: String) {
@@ -75,10 +79,10 @@ class GrabRideScraperService : AccessibilityService() {
         val editTexts = mutableListOf<AccessibilityNodeInfo>()
         findNodesByClass(rootNode, "android.widget.EditText", editTexts)
 
-        Log.d(TAG, "Found editTexts: $editTexts")
+        Log.d(TAG, "Found editTexts")
         if (editTexts.isNotEmpty()) {
             val targetField = editTexts.find { it.isFocused } ?: if (editTexts.size > 1) editTexts[1] else editTexts[0]
-            Log.d(TAG, "Found EditText: $targetField")
+            Log.d(TAG, "Found EditText")
 
             if (targetField.isEditable) {
                 val arguments = Bundle().apply {
@@ -101,42 +105,73 @@ class GrabRideScraperService : AccessibilityService() {
     private fun selectFirstSearchResult() {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
         val rootNode = rootInActiveWindow ?: return
-        val poiListNodes = rootNode.findAccessibilityNodeInfosByViewId("com.grabtaxi.passenger:id/poi_list")
-        if (poiListNodes.isNotEmpty()) {
-            val recyclerView = poiListNodes[0]
-            if (recyclerView.childCount > 1) {
-                if (resultsVisibleStartTime == 0L) {
-                    resultsVisibleStartTime = System.currentTimeMillis()
-                    Log.d(TAG, "Results detected, starting 1.5s timer")
-                    return
-                }
-                if (System.currentTimeMillis() - resultsVisibleStartTime > 1500) {
-                    Log.d(TAG, "1.5s timer expired, selecting first result")
-                    val firstResult = recyclerView.getChild(1)
-                    if (firstResult != null) {
-                        val clickableNode = if (firstResult.isClickable) firstResult else findClickableParent(firstResult)
-                        val success = clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        if (success == true) {
-                            Log.d(TAG, "Clicked first result after 1.5s delay")
+        val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131382467")
+        val tokens = destinationToType?.split(" ") ?: emptyList()
+        Log.d(TAG, "Checking ${poiTitles.size} results for '$destinationToType' using $tokens")
+
+        val targetPoiNode = poiTitles.find { node ->
+            val text = node.text?.toString()?.lowercase() ?: ""
+            tokens.isNotEmpty() && tokens.all { text.contains(it) }
+        }
+
+        Log.d(TAG, "Found targetPoiNode: $targetPoiNode")
+
+        if (targetPoiNode != null) {
+            isClickPending = true
+
+            handler.postDelayed({
+                val latestRoot = rootInActiveWindow
+                if (latestRoot != null) {
+                    val clickableRow = findClickableParent(targetPoiNode)
+                    if (clickableRow != null) {
+                        val success = clickableRow.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        if (success) {
+                            // Clear keyboard and previous UI
+//                            performGlobalAction(GLOBAL_ACTION_BACK)
+                            val xButtons =
+                                rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131371946")
+                            if (xButtons.isNotEmpty()) {
+                                val clickableX = findClickableParent(xButtons[0])
+                                clickableX?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                                Log.d(TAG, "Clicked 'X' button to clear search query")
+                            }
+
                             currState = AutomationState.CONFIRMING_PICKUP
                             resultsVisibleStartTime = 0L
+                            Log.d(TAG, "Clicked first result after 1.5s delay")
                         }
+                    } else {
+                        Log.d(TAG, "Could not find clickable element")
                     }
                 }
-            }
-        } else {
-            if (System.currentTimeMillis() % 1000 < 100) {
-                Log.d(TAG, "Waiting for POI list")
+                isClickPending = false
+            }, 1000)
+        }  else {
+            if (poiTitles.isEmpty()) {
+                resultsVisibleStartTime = 0L
+                Log.d(TAG, "No results on screen. Timer reset.")
+            } else {
+                if (System.currentTimeMillis() % 2000 < 100) {
+                    Log.d(TAG, "Ignoring stale results, waiting for network...")
+                }
             }
         }
+
     }
 
     private fun confirmPickup(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.CONFIRMING_PICKUP) return
-        val confirmNodes = rootNode.findAccessibilityNodeInfosByViewId("com.grabtaxi.passenger:id/bottom_control_card_click_button")
-        if (confirmNodes.isNotEmpty()) Log.d(TAG, "Found confirm button by UI")
+        val priceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
+        if (priceNode.isNotEmpty()) {
+            Log.d(TAG, "Price detected! Bypassing confirmation.")
+            currState = AutomationState.SCRAPING_PRICE
+            return
+        }
 
+        val confirmNodes = rootNode.findAccessibilityNodeInfosByText("Next")
+        Log.d(TAG, "Found ${confirmNodes.size} next buttons")
         if (confirmNodes.isNotEmpty()) {
+            Log.d(TAG, "Found next button by text")
             val textNode = confirmNodes[0]
 
             if (System.currentTimeMillis() - lastClickConfirmTime < 1000) return
@@ -160,17 +195,18 @@ class GrabRideScraperService : AccessibilityService() {
 
     private fun scrapePrice(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.SCRAPING_PRICE) return
-//        Log.d(TAG, "Scraping price")
-        val currPrice = findJustGrabPrice(rootNode)
+        val currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
+        val currPrice = currPriceNode.firstOrNull()?.text?.toString()
+        Log.d(TAG, "Found currPrice: $currPrice")
+
         if (currPrice != null) {
-            val intent = Intent("COM_EXAMPLE_GRAB_PRICE_UPDATE").apply {
+            val intent = Intent("COM_EXAMPLE_GOJEK_PRICE_UPDATE").apply {
                 putExtra("price_value", currPrice)
-//                setPackage(packageName)
                 setPackage("com.example.ridehailingsearchautomation")
             }
             sendBroadcast(intent)
             Log.d(TAG, "Broadcasted price: $currPrice")
-//
+
 //            lastPrice = currPrice
             currState = AutomationState.IDLE
             destinationToType = null
@@ -194,71 +230,12 @@ class GrabRideScraperService : AccessibilityService() {
         }
     }
 
-    private fun findGrabTextView(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // 1. Check current node
-        val className = node.className?.toString() ?: ""
-        val text = node.text?.toString() ?: ""
-        val contentDesc = node.contentDescription?.toString() ?: ""
-
-        // Heuristic: Is it a TextView (or subclass) and does it mention "Where to"?
-        if (className.contains("TextView") &&
-            (text.contains("Where to", ignoreCase = true) ||
-                    contentDesc.contains("Where to", ignoreCase = true))) {
-            return node
-        }
-
-        // 2. Recursive Step: Check children
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val result = findGrabTextView(child)
-            if (result != null) return result
-        }
-
-        return null
-    }
-
     private fun findClickableParent(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         var current = node
         while (current != null) {
             if (current.isClickable) return current
             current = current.parent
         }
-        return null
-    }
-
-    private fun findJustGrabPrice(rootNode: AccessibilityNodeInfo): String? {
-        val labelNodes = rootNode.findAccessibilityNodeInfosByViewId(
-            "com.grabtaxi.passenger:id/xsell_confirmation_taxi_type_name_autoscroll")
-
-        for (node in labelNodes) {
-            if (node.text?.toString()?.contains("JustGrab", ignoreCase = true) == true) {
-                var parentNode = node.parent
-                while (parentNode != null &&
-                    parentNode.viewIdResourceName != "com.grabtaxi.passenger:id/xsell_confirmation_item_container") {
-                    parentNode = parentNode.parent
-                }
-
-                if (parentNode != null) {
-                    return extractPriceFromRow(parentNode)
-                }
-            }
-        }
-        return null
-    }
-
-    private fun extractPriceFromRow(rowNode: AccessibilityNodeInfo) : String? {
-        val fareNodes = rowNode.findAccessibilityNodeInfosByViewId("com.grabtaxi.passenger:id/fareTextView")
-        val currencyNodes = rowNode.findAccessibilityNodeInfosByViewId("com.grabtaxi.passenger:id/currencyLeft")
-
-        if (fareNodes.isNotEmpty()) {
-            val amount = fareNodes[0].text?.toString() ?: ""
-            val currency = if (currencyNodes.isNotEmpty()) currencyNodes[0].text?.toString() ?: "S$" else "S$"
-
-            val fullPrice = "$currency$amount"
-            Log.d(TAG, "Found price: $fullPrice")
-            return fullPrice
-        }
-
         return null
     }
 
