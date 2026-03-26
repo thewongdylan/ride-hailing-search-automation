@@ -58,20 +58,46 @@ import com.example.ridehailingsearchautomation.ui.theme.RideHailingSearchAutomat
 import androidx.core.net.toUri
 
 private var TAG = "MainActivity"
+private val grabPackageName = "com.grabtaxi.passenger"
+private val gojekPackageName = "com.gojek.app"
+private var isDualSearchActive = false
+
 class MainActivity : ComponentActivity() {
     private var lastSearchedDestination = mutableStateOf("")
     private var grabPriceState = mutableStateOf("-")
     private var lastUpdatedGrabState = mutableStateOf("")
+    private var gojekPriceState = mutableStateOf("-")
+    private var lastUpdatedGojekState = mutableStateOf("")
+
     private val grabPriceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val price = intent?.getStringExtra("price_value")
-            Log.d(TAG, "MainActivity received broadcast: $price")
+            Log.d(TAG, "MainActivity received Grab price broadcast: $price")
             if (price != null) {
                 grabPriceState.value = price
                 val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                 lastUpdatedGrabState.value = "$currentTime"
-            }
 
+                if (isDualSearchActive) {
+                    Log.d(TAG, "Grab done, launching Gojek")
+                    openGojek(context!!, lastSearchedDestination.value)
+                }
+            }
+        }
+    }
+
+    private val gojekPriceReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val price = intent?.getStringExtra("price_value")
+            Log.d(TAG, "MainActivity received Gojek price broadcast: $price")
+            if (price != null) {
+                gojekPriceState.value = price
+                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                lastUpdatedGojekState.value = "$currentTime"
+
+                isDualSearchActive = false
+                Log.d(TAG, "Dual search done")
+            }
         }
     }
 
@@ -82,15 +108,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         Log.d(TAG, "onCreate called")
 
-        val filter = IntentFilter("COM_EXAMPLE_GRAB_PRICE_UPDATE")
-        registerReceiver(grabPriceReceiver, filter, RECEIVER_EXPORTED)
+        val grabFilter = IntentFilter("COM_EXAMPLE_GRAB_PRICE_UPDATE")
+        registerReceiver(grabPriceReceiver, grabFilter, RECEIVER_EXPORTED)
+        val gojekFilter = IntentFilter("COM_EXAMPLE_GOJEK_PRICE_UPDATE")
+        registerReceiver(gojekPriceReceiver, gojekFilter, RECEIVER_EXPORTED)
 
         setContent {
             RideHailingSearchAutomationTheme {
                 RHSAApp(
                     lastSearchedDestination = lastSearchedDestination,
                     grabPriceState = grabPriceState,
-                    lastUpdatedGrabState = lastUpdatedGrabState
+                    lastUpdatedGrabState = lastUpdatedGrabState,
+                    gojekPriceState = gojekPriceState,
+                    lastUpdatedGojekState = lastUpdatedGojekState
                 )
             }
         }
@@ -99,6 +129,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(grabPriceReceiver)
+        unregisterReceiver(gojekPriceReceiver)
     }
 }
 
@@ -108,8 +139,8 @@ fun RHSAApp(
     lastSearchedDestination: MutableState<String>,
     grabPriceState: MutableState<String>,
     lastUpdatedGrabState: MutableState<String>,
-//    gojekPriceState: MutableState<String>,
-//    lastUpdatedGojekState: MutableState<String>,
+    gojekPriceState: MutableState<String>,
+    lastUpdatedGojekState: MutableState<String>,
 //    tadaPriceState: MutableState<String>,
 //    lastUpdatedTadaState: MutableState<String>,
     modifier: Modifier = Modifier
@@ -156,9 +187,12 @@ fun RHSAApp(
             Button(
                 onClick = {
                     if (destination.isNotBlank()) {
+                        isDualSearchActive = true
                         grabPriceState.value = fetchingPriceText
+                        gojekPriceState.value = fetchingPriceText
                         lastSearchedDestination.value = destination
                         openGrab(context, destination)
+//                        openGojek(context,destination)
                     }
                 }
             ) {
@@ -192,7 +226,7 @@ fun RHSAApp(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 28.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Grab logo
@@ -210,7 +244,7 @@ fun RHSAApp(
                     Text(
                         text = "${stringResource(R.string.current_fare)}: ${grabPriceState.value}",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         lineHeight = 14.sp
                     )
 
@@ -230,11 +264,65 @@ fun RHSAApp(
                         onClick = { switchToGrab(context) },
                         modifier = Modifier.padding(vertical = 8.dp),
                         contentPadding = PaddingValues(
-                            horizontal = 12.dp,
+                            horizontal = 8.dp,
                             vertical = 6.dp
                         )
                     ) {
                         Text("Open Grab")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Gojek price display
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Gojek logo
+                Image(
+                    painter = painterResource(R.drawable.gojek_logo),
+                    contentDescription = "Gojek Logo",
+                    modifier = Modifier.size(45.dp)
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    // Current Gojek fare
+                    Text(
+                        text = "${stringResource(R.string.current_fare)}: ${gojekPriceState.value}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        lineHeight = 14.sp
+                    )
+
+                    // Last updated at
+                    Text(
+                        text = "${stringResource(R.string.last_updated_at)}: ${lastUpdatedGojekState.value}",
+                        fontStyle = FontStyle.Italic,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Left,
+                        modifier = Modifier.fillMaxWidth(),
+                        lineHeight = 14.sp
+                    )
+                }
+                // Open Gojek button
+                if (lastSearchedDestination.value.isNotBlank()) {
+                    Button(
+                        onClick = { switchToGojek(context) },
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        contentPadding = PaddingValues(
+                            horizontal = 8.dp,
+                            vertical = 6.dp
+                        )
+                    ) {
+                        Text("Open Gojek")
                     }
                 }
             }
@@ -259,8 +347,7 @@ fun openGrab(context: Context, destination: String) {
 }
 
 fun switchToGrab(context: Context) {
-    val grabPackage = "com.grabtaxi.passenger"
-    val intent = context.packageManager.getLaunchIntentForPackage(grabPackage)
+    val intent = context.packageManager.getLaunchIntentForPackage(grabPackageName)
 
     if (intent != null) {
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
@@ -275,6 +362,41 @@ fun switchToGrab(context: Context) {
     }
 }
 
+fun openGojek(context: Context, destination: String) {
+    GojekRideScraperService.destinationToType = destination
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(gojekPackageName)
+    if (launchIntent != null) {
+        launchIntent.replaceExtras(Bundle())
+
+        launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                                Intent.FLAG_ACTIVITY_NO_ANIMATION
+        try {
+            context.startActivity(launchIntent)
+            Log.d(TAG, "opening Gojek")
+        } catch (e: Exception) {
+            Toast.makeText(context, "Gojek app not found", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Gojek app not found, $e")
+        }
+    }
+}
+
+fun switchToGojek(context: Context) {
+    val intent = context.packageManager.getLaunchIntentForPackage(gojekPackageName)
+
+    if (intent != null) {
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not switch to Gojek", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Could not switch to Gojek, $e")
+        }
+    } else {
+        Log.d(TAG, "Gojek app not found")
+    }
+}
+
 
 @Preview(showBackground = true)
 @Composable
@@ -282,12 +404,16 @@ fun RHSAPreview() {
     val lastSearchedDestination = remember { mutableStateOf("")}
     val grabPriceState = remember { mutableStateOf("-")}
     val lastUpdatedGrabState = remember { mutableStateOf("")}
+    val gojekPriceState = remember { mutableStateOf("-")}
+    val lastUpdatedGojekState = remember { mutableStateOf("")}
 
     RideHailingSearchAutomationTheme {
         RHSAApp(
             lastSearchedDestination,
             grabPriceState,
-            lastUpdatedGrabState
+            lastUpdatedGrabState,
+            gojekPriceState,
+            lastUpdatedGojekState
         )
     }
 }
