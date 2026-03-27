@@ -6,5 +6,6 @@
     android:canRetrieveWindowContent="true"
     android:packageNames="com.example.ridehailingsearchautomation,
                             com.grabtaxi.passenger,
-                            com.gojek.app"
+                            com.gojek.app,
+                            io.mvlchain.tada"
     />

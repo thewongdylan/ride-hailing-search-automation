@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -60,6 +61,7 @@ import androidx.core.net.toUri
 private var TAG = "MainActivity"
 private val grabPackageName = "com.grabtaxi.passenger"
 private val gojekPackageName = "com.gojek.app"
+private val tadaPackageName = "io.mvlchain.tada"
 private var isDualSearchActive = false
 
 class MainActivity : ComponentActivity() {
@@ -68,6 +70,8 @@ class MainActivity : ComponentActivity() {
     private var lastUpdatedGrabState = mutableStateOf("")
     private var gojekPriceState = mutableStateOf("-")
     private var lastUpdatedGojekState = mutableStateOf("")
+    private var tadaPriceState = mutableStateOf("-")
+    private var lastUpdatedTadaState = mutableStateOf("")
 
     private val grabPriceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -120,7 +124,9 @@ class MainActivity : ComponentActivity() {
                     grabPriceState = grabPriceState,
                     lastUpdatedGrabState = lastUpdatedGrabState,
                     gojekPriceState = gojekPriceState,
-                    lastUpdatedGojekState = lastUpdatedGojekState
+                    lastUpdatedGojekState = lastUpdatedGojekState,
+                    tadaPriceState = tadaPriceState,
+                    lastUpdatedTadaState = lastUpdatedTadaState
                 )
             }
         }
@@ -141,8 +147,8 @@ fun RHSAApp(
     lastUpdatedGrabState: MutableState<String>,
     gojekPriceState: MutableState<String>,
     lastUpdatedGojekState: MutableState<String>,
-//    tadaPriceState: MutableState<String>,
-//    lastUpdatedTadaState: MutableState<String>,
+    tadaPriceState: MutableState<String>,
+    lastUpdatedTadaState: MutableState<String>,
     modifier: Modifier = Modifier
 ) {
     var destination by remember { mutableStateOf("") }
@@ -193,6 +199,7 @@ fun RHSAApp(
                         lastSearchedDestination.value = destination
                         openGrab(context, destination)
 //                        openGojek(context,destination)
+//                        openTada(context, destination)
                     }
                 }
             ) {
@@ -222,109 +229,101 @@ fun RHSAApp(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Grab price display
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 28.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Grab logo
-                Image(
-                    painter = painterResource(R.drawable.grab_logo),
-                    contentDescription = "Grab Logo",
-                    modifier = Modifier.size(45.dp)
-                )
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    // Current Grab fare
-                    Text(
-                        text = "${stringResource(R.string.current_fare)}: ${grabPriceState.value}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        lineHeight = 14.sp
-                    )
-
-                    // Last updated at
-                    Text(
-                        text = "${stringResource(R.string.last_updated_at)}: ${lastUpdatedGrabState.value}",
-                        fontStyle = FontStyle.Italic,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Left,
-                        modifier = Modifier.fillMaxWidth(),
-                        lineHeight = 14.sp
-                    )
-                }
-                // Open Grab button
-                if (lastSearchedDestination.value.isNotBlank()) {
-                    Button(
-                        onClick = { switchToGrab(context) },
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        contentPadding = PaddingValues(
-                            horizontal = 8.dp,
-                            vertical = 6.dp
-                        )
-                    ) {
-                        Text("Open Grab")
-                    }
-                }
-            }
+            rideFareRow(
+                R.drawable.grab_logo,
+                "Grab",
+                grabPriceState.value,
+                lastUpdatedGrabState.value,
+                { switchToGrab(context) },
+                lastSearchedDestination,
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Gojek price display
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 28.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Gojek logo
-                Image(
-                    painter = painterResource(R.drawable.gojek_logo),
-                    contentDescription = "Gojek Logo",
-                    modifier = Modifier.size(45.dp)
+            rideFareRow(
+                R.drawable.gojek_logo,
+                "Gojek",
+                gojekPriceState.value,
+                lastUpdatedGojekState.value,
+                { switchToGojek(context) },
+                lastSearchedDestination,
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Tada price display
+            rideFareRow(
+                R.drawable.tada_logo,
+                "Tada",
+                tadaPriceState.value,
+                lastUpdatedTadaState.value,
+                { switchToTada(context) },
+                lastSearchedDestination,
+            )
+        }
+    }
+}
+
+@Composable
+fun rideFareRow(
+    logoId: Int,
+    appName: String,
+    price: String,
+    lastUpdated: String,
+    onSwitchToApp: () -> Unit,
+    lastSearchedDestination: MutableState<String>,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 28.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // App logo
+        Image(
+            painter = painterResource(logoId),
+            contentDescription = "$appName Logo",
+            modifier = Modifier
+                .size(45.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        )
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Current fare
+            Text(
+                text = "${stringResource(R.string.current_fare)}: $price",
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                lineHeight = 14.sp
+            )
+
+            // Last updated at
+            Text(
+                text = "${stringResource(R.string.last_updated_at)}: $lastUpdated",
+                fontStyle = FontStyle.Italic,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Left,
+                modifier = Modifier.fillMaxWidth(),
+                lineHeight = 14.sp
+            )
+        }
+        // Open Tada button
+        if (lastSearchedDestination.value.isNotBlank()) {
+            Button(
+                onClick = onSwitchToApp,
+                modifier = Modifier.padding(vertical = 8.dp),
+                contentPadding = PaddingValues(
+                    horizontal = 8.dp,
+                    vertical = 6.dp
                 )
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    // Current Gojek fare
-                    Text(
-                        text = "${stringResource(R.string.current_fare)}: ${gojekPriceState.value}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        lineHeight = 14.sp
-                    )
-
-                    // Last updated at
-                    Text(
-                        text = "${stringResource(R.string.last_updated_at)}: ${lastUpdatedGojekState.value}",
-                        fontStyle = FontStyle.Italic,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Left,
-                        modifier = Modifier.fillMaxWidth(),
-                        lineHeight = 14.sp
-                    )
-                }
-                // Open Gojek button
-                if (lastSearchedDestination.value.isNotBlank()) {
-                    Button(
-                        onClick = { switchToGojek(context) },
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        contentPadding = PaddingValues(
-                            horizontal = 8.dp,
-                            vertical = 6.dp
-                        )
-                    ) {
-                        Text("Open Gojek")
-                    }
-                }
+            ) {
+                Text("Open $appName")
             }
         }
     }
@@ -332,7 +331,6 @@ fun RHSAApp(
 
 fun openGrab(context: Context, destination: String) {
     GrabRideScraperService.destinationToType = destination
-
     val uri = "grab://open?screenType=BOOKING".toUri()
     val intent = Intent(Intent.ACTION_VIEW,  uri).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -397,6 +395,41 @@ fun switchToGojek(context: Context) {
     }
 }
 
+fun openTada(context: Context, destination: String) {
+//    TadaRideScraperService.destinationToType = destination
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(tadaPackageName)
+    if (launchIntent != null) {
+        launchIntent.replaceExtras(Bundle())
+
+        launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                Intent.FLAG_ACTIVITY_NO_ANIMATION
+        try {
+            context.startActivity(launchIntent)
+            Log.d(TAG, "opening Tada")
+        } catch (e: Exception) {
+            Toast.makeText(context, "Tada app not found", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Tada app not found, $e")
+        }
+    }
+}
+
+fun switchToTada(context: Context) {
+    val intent = context.packageManager.getLaunchIntentForPackage(tadaPackageName)
+
+    if (intent != null) {
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not switch to Tada", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Could not switch to Tada, $e")
+        }
+    } else {
+        Log.d(TAG, "Tada app not found")
+    }
+}
+
 
 @Preview(showBackground = true)
 @Composable
@@ -406,6 +439,8 @@ fun RHSAPreview() {
     val lastUpdatedGrabState = remember { mutableStateOf("")}
     val gojekPriceState = remember { mutableStateOf("-")}
     val lastUpdatedGojekState = remember { mutableStateOf("")}
+    val tadaPriceState = remember { mutableStateOf("-") }
+    val lastUpdatedTadaState = remember { mutableStateOf("") }
 
     RideHailingSearchAutomationTheme {
         RHSAApp(
@@ -413,7 +448,9 @@ fun RHSAPreview() {
             grabPriceState,
             lastUpdatedGrabState,
             gojekPriceState,
-            lastUpdatedGojekState
+            lastUpdatedGojekState,
+            tadaPriceState,
+            lastUpdatedTadaState
         )
     }
 }
