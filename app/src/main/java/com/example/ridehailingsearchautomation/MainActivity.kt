@@ -102,6 +102,23 @@ class MainActivity : ComponentActivity() {
                 val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                 lastUpdatedGojekState.value = "$currentTime"
 
+                if (isDualSearchActive) {
+                    Log.d(TAG, "Gojek done, launching Zig")
+                    openZig(context!!, lastSearchedDestination.value)
+                }
+            }
+        }
+    }
+
+    private val zigPriceReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val price = intent?.getStringExtra("price_value")
+            Log.d(TAG, "MainActivity received Zig price broadcast: $price")
+            if (price != null) {
+                zigPriceState.value = price
+                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                lastUpdatedZigState.value = "$currentTime"
+
                 isDualSearchActive = false
                 Log.d(TAG, "Dual search done")
             }
@@ -119,6 +136,8 @@ class MainActivity : ComponentActivity() {
         registerReceiver(grabPriceReceiver, grabFilter, RECEIVER_EXPORTED)
         val gojekFilter = IntentFilter("COM_EXAMPLE_GOJEK_PRICE_UPDATE")
         registerReceiver(gojekPriceReceiver, gojekFilter, RECEIVER_EXPORTED)
+        val zigFilter = IntentFilter("COM_EXAMPLE_ZIG_PRICE_UPDATE")
+        registerReceiver(zigPriceReceiver, zigFilter, RECEIVER_EXPORTED)
 
         setContent {
             RideHailingSearchAutomationTheme {
@@ -141,6 +160,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         unregisterReceiver(grabPriceReceiver)
         unregisterReceiver(gojekPriceReceiver)
+        unregisterReceiver(zigPriceReceiver)
     }
 }
 
@@ -206,10 +226,10 @@ fun RHSAApp(
                         tadaPriceState.value = fetchingPriceText
                         zigPriceState.value = fetchingPriceText
                         lastSearchedDestination.value = destination
-//                        openGrab(context, destination)
+                        openGrab(context, destination)
 //                        openGojek(context,destination)
 //                        openTada(context, destination)
-                        openZig(context, destination)
+//                        openZig(context, destination)
                     }
                 }
             ) {
@@ -260,17 +280,17 @@ fun RHSAApp(
                 lastSearchedDestination,
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+//            Spacer(modifier = Modifier.height(16.dp))
 
             // Tada price display
-            rideFareRow(
-                R.drawable.tada_logo,
-                "Tada",
-                tadaPriceState.value,
-                lastUpdatedTadaState.value,
-                { switchToTada(context) },
-                lastSearchedDestination,
-            )
+//            rideFareRow(
+//                R.drawable.tada_logo,
+//                "Tada",
+//                tadaPriceState.value,
+//                lastUpdatedTadaState.value,
+//                { switchToTada(context) },
+//                lastSearchedDestination,
+//            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -400,7 +420,7 @@ fun switchToApp(context: Context, packageName: String, appName: String) {
 
 fun openGrab(context: Context, destination: String) {
     GrabRideScraperService.destinationToType = destination
-    openAppByDeeplink(context, "grab://open?screenType=SEARCH", "Grab")
+    openAppByDeeplink(context, "grab://open?screenType=BOOKING", "Grab")
 }
 
 fun switchToGrab(context: Context) {

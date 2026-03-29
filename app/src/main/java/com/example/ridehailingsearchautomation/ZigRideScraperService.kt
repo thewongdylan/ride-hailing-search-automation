@@ -13,12 +13,10 @@ import android.view.accessibility.AccessibilityNodeInfo
 class ZigRideScraperService : AccessibilityService() {
     private val TAG = "ZigRideScraperService"
     private val packageName = "com.codigo.comfort"
-    private enum class AutomationState { IDLE, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
+    private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
     private var currState = AutomationState.IDLE
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
-    private val handler = Handler(Looper.getMainLooper())
-    private var isClickPending = false
     companion object {
         var destinationToType: String? = null
         private var lastProcessedDestination : String? = null
@@ -36,46 +34,52 @@ class ZigRideScraperService : AccessibilityService() {
             resultsVisibleStartTime = 0L
         }
 
-        // Reset if user leaves Gojek
+        // Reset if user leaves Zig
         if (currPackage != packageName && currState != AutomationState.IDLE) {
-            Log.d(TAG, "User left Gojek, resetting state")
+            Log.d(TAG, "User left Zig, resetting state")
             currState = AutomationState.IDLE
             return
         }
 
-        // State machine: handle states within Gojek app
+        // State machine: handle states within Zig app
         if (currPackage == packageName) {
             when (currState) {
                 AutomationState.IDLE -> {
-//                    if (destinationToType != null) navigateToSearch(rootNode)
+                    if (destinationToType != null) navigateToSearch(rootNode)
+                }
+                AutomationState.CLEARING_ADS -> {
+//                    clearAds(rootNode)
                 }
                 AutomationState.TYPING -> {
-//                    enterDestination(rootNode, destinationToType ?: return)
+                    enterDestination(rootNode, destinationToType ?: return)
                 }
                 AutomationState.WAITING_FOR_RESULTS -> {
-//                    selectFirstSearchResult()
+                    selectFirstSearchResult()
                 }
                 AutomationState.CONFIRMING_PICKUP -> {
-//                    confirmPickup(rootNode)
+                    confirmPickup(rootNode)
                 }
                 AutomationState.SCRAPING_PRICE -> {
-//                    scrapePrice(rootNode)
+                    scrapePrice(rootNode)
                 }
             }
         }
     }
 
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
-        val searchBars = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131368260")
-        if (searchBars.isNotEmpty()) {
+//        val searchBar = findTextView(rootNode, "lblCarRidesTitle")
+        val searchBar = findTextView(rootNode, "Where to?")
+        if (searchBar != null) {
             Log.d(TAG, "Found search bar")
-            searchBars[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            val clickableNode = findClickableParent(searchBar)
+            clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             Log.d(TAG, "Clicked on search bar")
             currState = AutomationState.TYPING
         } else {
             Log.d(TAG, "Could not find search bar")
         }
     }
+
     private fun enterDestination(rootNode: AccessibilityNodeInfo, destination: String) {
         if (currState != AutomationState.TYPING) return
         val editTexts = mutableListOf<AccessibilityNodeInfo>()
@@ -107,7 +111,7 @@ class ZigRideScraperService : AccessibilityService() {
     private fun selectFirstSearchResult() {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
         val rootNode = rootInActiveWindow ?: return
-        val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131382467")
+        val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/lblRecentLocationTradeName")
         val tokens = destinationToType?.split(" ") ?: emptyList()
         Log.d(TAG, "Checking ${poiTitles.size} results for '$destinationToType' using $tokens")
 
@@ -119,35 +123,12 @@ class ZigRideScraperService : AccessibilityService() {
         Log.d(TAG, "Found targetPoiNode: $targetPoiNode")
 
         if (targetPoiNode != null) {
-            isClickPending = true
-
-            handler.postDelayed({
-                val latestRoot = rootInActiveWindow
-                if (latestRoot != null) {
-                    val clickableRow = findClickableParent(targetPoiNode)
-                    if (clickableRow != null) {
-                        val success = clickableRow.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        if (success) {
-                            // Clear keyboard and previous UI
-//                            performGlobalAction(GLOBAL_ACTION_BACK)
-                            val xButtons =
-                                rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131371946")
-                            if (xButtons.isNotEmpty()) {
-                                val clickableX = findClickableParent(xButtons[0])
-                                clickableX?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                                Log.d(TAG, "Clicked 'X' button to clear search query")
-                            }
-
-                            currState = AutomationState.CONFIRMING_PICKUP
-                            resultsVisibleStartTime = 0L
-                            Log.d(TAG, "Clicked first result after 1.5s delay")
-                        }
-                    } else {
-                        Log.d(TAG, "Could not find clickable element")
-                    }
-                }
-                isClickPending = false
-            }, 1000)
+            val clickableNode = findClickableParent(targetPoiNode)
+            val success = clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (success == true) {
+                Log.d(TAG, "Clicked first result")
+                currState = AutomationState.CONFIRMING_PICKUP
+            }
         }  else {
             if (poiTitles.isEmpty()) {
                 resultsVisibleStartTime = 0L
@@ -163,53 +144,42 @@ class ZigRideScraperService : AccessibilityService() {
 
     private fun confirmPickup(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.CONFIRMING_PICKUP) return
-        val priceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
-        if (priceNode.isNotEmpty()) {
-            Log.d(TAG, "Price detected! Bypassing confirmation.")
-            currState = AutomationState.SCRAPING_PRICE
-            return
-        }
 
-        val confirmNodes = rootNode.findAccessibilityNodeInfosByText("Next")
-        Log.d(TAG, "Found ${confirmNodes.size} next buttons")
-        if (confirmNodes.isNotEmpty()) {
+        val confirmNode = findTextView(rootNode,"Choose this pickup")
+        if (confirmNode != null) {
             Log.d(TAG, "Found next button by text")
-            val textNode = confirmNodes[0]
 
             if (System.currentTimeMillis() - lastClickConfirmTime < 1000) return
             lastClickConfirmTime = System.currentTimeMillis()
 
-            if (!textNode.isVisibleToUser) {
+            if (!confirmNode.isVisibleToUser) {
                 Log.d(TAG, "Confirm button not yet visible")
                 return
             }
 
-            if (textNode != null) {
-                val clickableButton = if (textNode.isClickable) textNode else findClickableParent(textNode)
-                val success = clickableButton?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                if (success == true) {
-                    currState = AutomationState.SCRAPING_PRICE
-                    Log.d(TAG, "Clicked confirm button")
-                }
+            val clickableButton = if (confirmNode.isClickable) confirmNode else findClickableParent(confirmNode)
+            val success = clickableButton?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (success == true) {
+                currState = AutomationState.SCRAPING_PRICE
+                Log.d(TAG, "Clicked confirm button")
             }
         }
     }
 
     private fun scrapePrice(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.SCRAPING_PRICE) return
-        val currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
+        val currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/tvApplicableFare")
         val currPrice = currPriceNode.firstOrNull()?.text?.toString()
         Log.d(TAG, "Found currPrice: $currPrice")
 
         if (currPrice != null) {
-            val intent = Intent("COM_EXAMPLE_GOJEK_PRICE_UPDATE").apply {
+            val intent = Intent("COM_EXAMPLE_ZIG_PRICE_UPDATE").apply {
                 putExtra("price_value", currPrice)
                 setPackage("com.example.ridehailingsearchautomation")
             }
             sendBroadcast(intent)
             Log.d(TAG, "Broadcasted price: $currPrice")
 
-//            lastPrice = currPrice
             currState = AutomationState.IDLE
             destinationToType = null
             Log.d(TAG, "Workflow complete, reset state to IDLE")
@@ -238,6 +208,22 @@ class ZigRideScraperService : AccessibilityService() {
             if (current.isClickable) return current
             current = current.parent
         }
+        return null
+    }
+
+    private fun findTextView(node: AccessibilityNodeInfo, textToSearch: String): AccessibilityNodeInfo? {
+        val text = node.text?.toString() ?: ""
+
+        if (text.contains(textToSearch, ignoreCase = true)) {
+            return node
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findTextView(child, textToSearch)
+            if (result != null) return result
+        }
+
         return null
     }
 
