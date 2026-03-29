@@ -58,10 +58,11 @@ import androidx.compose.ui.unit.sp
 import com.example.ridehailingsearchautomation.ui.theme.RideHailingSearchAutomationTheme
 import androidx.core.net.toUri
 
-private var TAG = "MainActivity"
+private var TAG = "MainActivityLogs"
 private val grabPackageName = "com.grabtaxi.passenger"
 private val gojekPackageName = "com.gojek.app"
 private val tadaPackageName = "io.mvlchain.tada"
+private val zigPackageName = "com.codigo.comfort"
 private var isDualSearchActive = false
 
 class MainActivity : ComponentActivity() {
@@ -72,6 +73,8 @@ class MainActivity : ComponentActivity() {
     private var lastUpdatedGojekState = mutableStateOf("")
     private var tadaPriceState = mutableStateOf("-")
     private var lastUpdatedTadaState = mutableStateOf("")
+    private var zigPriceState = mutableStateOf("-")
+    private var lastUpdatedZigState = mutableStateOf("")
 
     private val grabPriceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -99,6 +102,23 @@ class MainActivity : ComponentActivity() {
                 val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                 lastUpdatedGojekState.value = "$currentTime"
 
+                if (isDualSearchActive) {
+                    Log.d(TAG, "Gojek done, launching Zig")
+                    openZig(context!!, lastSearchedDestination.value)
+                }
+            }
+        }
+    }
+
+    private val zigPriceReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val price = intent?.getStringExtra("price_value")
+            Log.d(TAG, "MainActivity received Zig price broadcast: $price")
+            if (price != null) {
+                zigPriceState.value = price
+                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                lastUpdatedZigState.value = "$currentTime"
+
                 isDualSearchActive = false
                 Log.d(TAG, "Dual search done")
             }
@@ -116,6 +136,8 @@ class MainActivity : ComponentActivity() {
         registerReceiver(grabPriceReceiver, grabFilter, RECEIVER_EXPORTED)
         val gojekFilter = IntentFilter("COM_EXAMPLE_GOJEK_PRICE_UPDATE")
         registerReceiver(gojekPriceReceiver, gojekFilter, RECEIVER_EXPORTED)
+        val zigFilter = IntentFilter("COM_EXAMPLE_ZIG_PRICE_UPDATE")
+        registerReceiver(zigPriceReceiver, zigFilter, RECEIVER_EXPORTED)
 
         setContent {
             RideHailingSearchAutomationTheme {
@@ -126,7 +148,9 @@ class MainActivity : ComponentActivity() {
                     gojekPriceState = gojekPriceState,
                     lastUpdatedGojekState = lastUpdatedGojekState,
                     tadaPriceState = tadaPriceState,
-                    lastUpdatedTadaState = lastUpdatedTadaState
+                    lastUpdatedTadaState = lastUpdatedTadaState,
+                    zigPriceState = zigPriceState,
+                    lastUpdatedZigState = lastUpdatedZigState
                 )
             }
         }
@@ -136,6 +160,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         unregisterReceiver(grabPriceReceiver)
         unregisterReceiver(gojekPriceReceiver)
+        unregisterReceiver(zigPriceReceiver)
     }
 }
 
@@ -149,9 +174,11 @@ fun RHSAApp(
     lastUpdatedGojekState: MutableState<String>,
     tadaPriceState: MutableState<String>,
     lastUpdatedTadaState: MutableState<String>,
+    zigPriceState: MutableState<String>,
+    lastUpdatedZigState: MutableState<String>,
     modifier: Modifier = Modifier
 ) {
-    var destination by remember { mutableStateOf("") }
+    var destination by remember { mutableStateOf("bedok mall") }
     val context = LocalContext.current
     val fetchingPriceText = stringResource(R.string.fetching_price)
 
@@ -196,10 +223,13 @@ fun RHSAApp(
                         isDualSearchActive = true
                         grabPriceState.value = fetchingPriceText
                         gojekPriceState.value = fetchingPriceText
+                        tadaPriceState.value = fetchingPriceText
+                        zigPriceState.value = fetchingPriceText
                         lastSearchedDestination.value = destination
                         openGrab(context, destination)
 //                        openGojek(context,destination)
 //                        openTada(context, destination)
+//                        openZig(context, destination)
                     }
                 }
             ) {
@@ -250,15 +280,27 @@ fun RHSAApp(
                 lastSearchedDestination,
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+//            Spacer(modifier = Modifier.height(16.dp))
 
             // Tada price display
+//            rideFareRow(
+//                R.drawable.tada_logo,
+//                "Tada",
+//                tadaPriceState.value,
+//                lastUpdatedTadaState.value,
+//                { switchToTada(context) },
+//                lastSearchedDestination,
+//            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Zig price display
             rideFareRow(
-                R.drawable.tada_logo,
-                "Tada",
-                tadaPriceState.value,
-                lastUpdatedTadaState.value,
-                { switchToTada(context) },
+                R.drawable.zig_logo,
+                "Zig",
+                zigPriceState.value,
+                lastUpdatedZigState.value,
+                { switchToZig(context) },
                 lastSearchedDestination,
             )
         }
@@ -329,9 +371,8 @@ fun rideFareRow(
     }
 }
 
-fun openGrab(context: Context, destination: String) {
-    GrabRideScraperService.destinationToType = destination
-    val uri = "grab://open?screenType=BOOKING".toUri()
+fun openAppByDeeplink(context: Context, deeplink: String, appName: String) {
+    val uri = deeplink.toUri()
     val intent = Intent(Intent.ACTION_VIEW,  uri).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK
     }
@@ -339,65 +380,13 @@ fun openGrab(context: Context, destination: String) {
     try {
         context.startActivity(intent)
     } catch (e: Exception) {
-        Toast.makeText(context, "Grab app not found", Toast.LENGTH_SHORT).show()
-        Log.d(TAG, "Grab app not found, $e")
+        Toast.makeText(context, "$appName app not found", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "$appName app not found, $e")
     }
 }
 
-fun switchToGrab(context: Context) {
-    val intent = context.packageManager.getLaunchIntentForPackage(grabPackageName)
-
-    if (intent != null) {
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-        try {
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(context, "Could not switch to Grab", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Could not switch to Grab, $e")
-        }
-    } else {
-        Log.d(TAG, "Grab app not found")
-    }
-}
-
-fun openGojek(context: Context, destination: String) {
-    GojekRideScraperService.destinationToType = destination
-    val launchIntent = context.packageManager.getLaunchIntentForPackage(gojekPackageName)
-    if (launchIntent != null) {
-        launchIntent.replaceExtras(Bundle())
-
-        launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                                Intent.FLAG_ACTIVITY_NO_ANIMATION
-        try {
-            context.startActivity(launchIntent)
-            Log.d(TAG, "opening Gojek")
-        } catch (e: Exception) {
-            Toast.makeText(context, "Gojek app not found", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Gojek app not found, $e")
-        }
-    }
-}
-
-fun switchToGojek(context: Context) {
-    val intent = context.packageManager.getLaunchIntentForPackage(gojekPackageName)
-
-    if (intent != null) {
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-        try {
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(context, "Could not switch to Gojek", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Could not switch to Gojek, $e")
-        }
-    } else {
-        Log.d(TAG, "Gojek app not found")
-    }
-}
-
-fun openTada(context: Context, destination: String) {
-//    TadaRideScraperService.destinationToType = destination
-    val launchIntent = context.packageManager.getLaunchIntentForPackage(tadaPackageName)
+fun openAppByDirectLaunch(context: Context, packageName: String, appName: String) {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
     if (launchIntent != null) {
         launchIntent.replaceExtras(Bundle())
 
@@ -406,28 +395,63 @@ fun openTada(context: Context, destination: String) {
                 Intent.FLAG_ACTIVITY_NO_ANIMATION
         try {
             context.startActivity(launchIntent)
-            Log.d(TAG, "opening Tada")
+            Log.d(TAG, "Opening $appName")
         } catch (e: Exception) {
-            Toast.makeText(context, "Tada app not found", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Tada app not found, $e")
+            Toast.makeText(context, "$appName app not found", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "$appName app not found, $e")
         }
     }
 }
 
-fun switchToTada(context: Context) {
-    val intent = context.packageManager.getLaunchIntentForPackage(tadaPackageName)
-
+fun switchToApp(context: Context, packageName: String, appName: String) {
+    val intent = context.packageManager.getLaunchIntentForPackage(packageName)
     if (intent != null) {
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         try {
             context.startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(context, "Could not switch to Tada", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Could not switch to Tada, $e")
+            Toast.makeText(context, "Could not switch to $appName", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Could not switch to $appName, $e")
         }
     } else {
-        Log.d(TAG, "Tada app not found")
+        Log.d(TAG, "$appName app not found")
     }
+}
+
+fun openGrab(context: Context, destination: String) {
+    GrabRideScraperService.destinationToType = destination
+    openAppByDeeplink(context, "grab://open?screenType=BOOKING", "Grab")
+}
+
+fun switchToGrab(context: Context) {
+    switchToApp(context, grabPackageName, "Grab")
+}
+
+fun openGojek(context: Context, destination: String) {
+    GojekRideScraperService.destinationToType = destination
+    openAppByDirectLaunch(context, gojekPackageName, "Gojek")
+}
+
+fun switchToGojek(context: Context) {
+    switchToApp(context, gojekPackageName, "Gojek")
+}
+
+fun openTada(context: Context, destination: String) {
+//    TadaRideScraperService.destinationToType = destination
+    openAppByDirectLaunch(context, tadaPackageName, "Tada")
+}
+
+fun switchToTada(context: Context) {
+    switchToApp(context, tadaPackageName, "Tada")
+}
+
+fun openZig(context: Context, destination: String) {
+    ZigRideScraperService.destinationToType = destination
+    openAppByDirectLaunch(context, zigPackageName, "Zig")
+}
+
+fun switchToZig(context: Context) {
+    switchToApp(context, zigPackageName, "Zig")
 }
 
 
@@ -441,6 +465,9 @@ fun RHSAPreview() {
     val lastUpdatedGojekState = remember { mutableStateOf("")}
     val tadaPriceState = remember { mutableStateOf("-") }
     val lastUpdatedTadaState = remember { mutableStateOf("") }
+    val zigPriceState = remember { mutableStateOf("-") }
+    val lastUpdatedZigState = remember { mutableStateOf("") }
+
 
     RideHailingSearchAutomationTheme {
         RHSAApp(
@@ -450,7 +477,9 @@ fun RHSAPreview() {
             gojekPriceState,
             lastUpdatedGojekState,
             tadaPriceState,
-            lastUpdatedTadaState
+            lastUpdatedTadaState,
+            zigPriceState,
+            lastUpdatedZigState
         )
     }
 }
