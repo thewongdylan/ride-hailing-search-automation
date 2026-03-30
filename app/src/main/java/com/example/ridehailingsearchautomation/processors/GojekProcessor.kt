@@ -1,30 +1,29 @@
-package com.example.ridehailingsearchautomation
+package com.example.ridehailingsearchautomation.processors
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
-class GojekRideScraperService : AccessibilityService() {
-    private val TAG = "GojekRideScraperService"
-    private val packageName = "com.gojek.app"
+class GojekProcessor(override val service: AccessibilityService) : BaseScraperProcessor(service) {
+    override val TAG = "GojekProcessor"
+    override val packageName = "com.gojek.app"
     private enum class AutomationState { IDLE, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
     private var currState = AutomationState.IDLE
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
-    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLooper())
     private var isClickPending = false
     companion object {
         var destinationToType: String? = null
         private var lastProcessedDestination : String? = null
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val rootNode = rootInActiveWindow ?: return
-        val currPackage = event?.packageName?.toString() ?: ""
+    override fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo) {
+        val currPackage = event.packageName?.toString() ?: ""
 
         // Reset if new destination sent from app
         if (destinationToType != null && destinationToType != lastProcessedDestination) {
@@ -44,30 +43,20 @@ class GojekRideScraperService : AccessibilityService() {
         // State machine: handle states within Gojek app
         if (currPackage == packageName) {
             when (currState) {
-                AutomationState.IDLE -> {
-                    if (destinationToType != null) navigateToSearch(rootNode)
-                }
-                AutomationState.TYPING -> {
-                    enterDestination(rootNode, destinationToType ?: return)
-                }
-                AutomationState.WAITING_FOR_RESULTS -> {
-                    selectFirstSearchResult()
-                }
-                AutomationState.CONFIRMING_PICKUP -> {
-                    confirmPickup(rootNode)
-                }
-                AutomationState.SCRAPING_PRICE -> {
-                    scrapePrice(rootNode)
-                }
+                AutomationState.IDLE -> if (destinationToType != null) navigateToSearch(rootNode)
+                AutomationState.TYPING -> enterDestination(rootNode, destinationToType ?: return)
+                AutomationState.WAITING_FOR_RESULTS -> selectFirstSearchResult(rootNode)
+                AutomationState.CONFIRMING_PICKUP -> confirmPickup(rootNode)
+                AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
         }
     }
 
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
-        val searchBars = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131368260")
-        if (searchBars.isNotEmpty()) {
+        val searchBar = findNodeByText(rootNode,"Search for a destination")
+        if (searchBar != null) {
             Log.d(TAG, "Found search bar")
-            searchBars[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            searchBar.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             Log.d(TAG, "Clicked on search bar")
             currState = AutomationState.TYPING
         } else {
@@ -102,9 +91,8 @@ class GojekRideScraperService : AccessibilityService() {
         }
     }
 
-    private fun selectFirstSearchResult() {
+    private fun selectFirstSearchResult(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
-        val rootNode = rootInActiveWindow ?: return
         val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131382467")
         val tokens = destinationToType?.split(" ") ?: emptyList()
         Log.d(TAG, "Checking ${poiTitles.size} results for '$destinationToType' using $tokens")
@@ -120,14 +108,12 @@ class GojekRideScraperService : AccessibilityService() {
             isClickPending = true
 
             handler.postDelayed({
-                val latestRoot = rootInActiveWindow
+                val latestRoot = service.rootInActiveWindow
                 if (latestRoot != null) {
                     val clickableRow = findClickableParent(targetPoiNode)
                     if (clickableRow != null) {
                         val success = clickableRow.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                         if (success) {
-                            // Clear keyboard and previous UI
-//                            performGlobalAction(GLOBAL_ACTION_BACK)
                             val xButtons =
                                 rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131371946")
                             if (xButtons.isNotEmpty()) {
@@ -156,7 +142,6 @@ class GojekRideScraperService : AccessibilityService() {
                 }
             }
         }
-
     }
 
     private fun confirmPickup(rootNode: AccessibilityNodeInfo) {
@@ -200,57 +185,12 @@ class GojekRideScraperService : AccessibilityService() {
         Log.d(TAG, "Found currPrice: $currPrice")
 
         if (currPrice != null) {
-            val intent = Intent("COM_EXAMPLE_GOJEK_PRICE_UPDATE").apply {
-                putExtra("price_value", currPrice)
-                setPackage("com.example.ridehailingsearchautomation")
-            }
-            sendBroadcast(intent)
+            broadcastPriceAndReturn(currPrice, "COM_EXAMPLE_GOJEK_PRICE_UPDATE")
             Log.d(TAG, "Broadcasted price: $currPrice")
 
-//            lastPrice = currPrice
             currState = AutomationState.IDLE
             destinationToType = null
             Log.d(TAG, "Workflow complete, reset state to IDLE")
-
-            val returnIntent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            }
-            startActivity(returnIntent)
-            Log.d(TAG, "Returned to MainActivity")
         }
     }
-
-    // Helper Functions
-    private fun findNodesByClass(node: AccessibilityNodeInfo, className: String, result: MutableList<AccessibilityNodeInfo>) {
-        if (node.className?.toString() == className) {
-            result.add(node)
-        }
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { findNodesByClass(it, className, result) }
-        }
-    }
-
-    private fun findClickableParent(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        var current = node
-        while (current != null) {
-            if (current.isClickable) return current
-            current = current.parent
-        }
-        return null
-    }
-
-    override fun onInterrupt() {
-        Log.e(TAG, "Service Interrupted")
-    }
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        val info = serviceInfo
-        info.flags = info.flags or
-                AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        serviceInfo = info
-    }
-
 }
