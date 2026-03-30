@@ -1,18 +1,14 @@
-package com.example.ridehailingsearchautomation
+package com.example.ridehailingsearchautomation.processors
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
-class ZigRideScraperService : AccessibilityService() {
-    private val TAG = "ZigRideScraperService"
-    private val packageName = "com.codigo.comfort"
+class ZigProcessor(override val service: AccessibilityService) : BaseScraperProcessor(service) {
+    override val TAG = "ZigProcessor"
+    override val packageName = "com.codigo.comfort"
     private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
     private var currState = AutomationState.IDLE
     private var resultsVisibleStartTime = 0L
@@ -22,9 +18,8 @@ class ZigRideScraperService : AccessibilityService() {
         private var lastProcessedDestination : String? = null
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val rootNode = rootInActiveWindow ?: return
-        val currPackage = event?.packageName?.toString() ?: ""
+    override fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo) {
+        val currPackage = event.packageName?.toString() ?: ""
 
         // Reset if new destination sent from app
         if (destinationToType != null && destinationToType != lastProcessedDestination) {
@@ -44,31 +39,21 @@ class ZigRideScraperService : AccessibilityService() {
         // State machine: handle states within Zig app
         if (currPackage == packageName) {
             when (currState) {
-                AutomationState.IDLE -> {
-                    if (destinationToType != null) navigateToSearch(rootNode)
-                }
+                AutomationState.IDLE -> if (destinationToType != null) navigateToSearch(rootNode)
                 AutomationState.CLEARING_ADS -> {
 //                    clearAds(rootNode)
                 }
-                AutomationState.TYPING -> {
-                    enterDestination(rootNode, destinationToType ?: return)
-                }
-                AutomationState.WAITING_FOR_RESULTS -> {
-                    selectFirstSearchResult()
-                }
-                AutomationState.CONFIRMING_PICKUP -> {
-                    confirmPickup(rootNode)
-                }
-                AutomationState.SCRAPING_PRICE -> {
-                    scrapePrice(rootNode)
-                }
+                AutomationState.TYPING -> enterDestination(rootNode, destinationToType ?: return)
+                AutomationState.WAITING_FOR_RESULTS -> selectFirstSearchResult(rootNode)
+                AutomationState.CONFIRMING_PICKUP -> confirmPickup(rootNode)
+                AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
         }
     }
 
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
 //        val searchBar = findTextView(rootNode, "lblCarRidesTitle")
-        val searchBar = findTextView(rootNode, "Where to?")
+        val searchBar = findNodeByText(rootNode, "Where to?")
         if (searchBar != null) {
             Log.d(TAG, "Found search bar")
             val clickableNode = findClickableParent(searchBar)
@@ -108,9 +93,8 @@ class ZigRideScraperService : AccessibilityService() {
         }
     }
 
-    private fun selectFirstSearchResult() {
+    private fun selectFirstSearchResult(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
-        val rootNode = rootInActiveWindow ?: return
         val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/lblRecentLocationTradeName")
         val tokens = destinationToType?.split(" ") ?: emptyList()
         Log.d(TAG, "Checking ${poiTitles.size} results for '$destinationToType' using $tokens")
@@ -145,7 +129,7 @@ class ZigRideScraperService : AccessibilityService() {
     private fun confirmPickup(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.CONFIRMING_PICKUP) return
 
-        val confirmNode = findTextView(rootNode,"Choose this pickup")
+        val confirmNode = findNodeByText(rootNode,"Choose this pickup")
         if (confirmNode != null) {
             Log.d(TAG, "Found next button by text")
 
@@ -173,72 +157,12 @@ class ZigRideScraperService : AccessibilityService() {
         Log.d(TAG, "Found currPrice: $currPrice")
 
         if (currPrice != null) {
-            val intent = Intent("COM_EXAMPLE_ZIG_PRICE_UPDATE").apply {
-                putExtra("price_value", currPrice)
-                setPackage("com.example.ridehailingsearchautomation")
-            }
-            sendBroadcast(intent)
+            broadcastPriceAndReturn(currPrice, "COM_EXAMPLE_ZIG_PRICE_UPDATE")
             Log.d(TAG, "Broadcasted price: $currPrice")
 
             currState = AutomationState.IDLE
             destinationToType = null
             Log.d(TAG, "Workflow complete, reset state to IDLE")
-
-            val returnIntent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            }
-            startActivity(returnIntent)
-            Log.d(TAG, "Returned to MainActivity")
         }
     }
-
-    // Helper Functions
-    private fun findNodesByClass(node: AccessibilityNodeInfo, className: String, result: MutableList<AccessibilityNodeInfo>) {
-        if (node.className?.toString() == className) {
-            result.add(node)
-        }
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { findNodesByClass(it, className, result) }
-        }
-    }
-
-    private fun findClickableParent(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        var current = node
-        while (current != null) {
-            if (current.isClickable) return current
-            current = current.parent
-        }
-        return null
-    }
-
-    private fun findTextView(node: AccessibilityNodeInfo, textToSearch: String): AccessibilityNodeInfo? {
-        val text = node.text?.toString() ?: ""
-
-        if (text.contains(textToSearch, ignoreCase = true)) {
-            return node
-        }
-
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val result = findTextView(child, textToSearch)
-            if (result != null) return result
-        }
-
-        return null
-    }
-
-    override fun onInterrupt() {
-        Log.e(TAG, "Service Interrupted")
-    }
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        val info = serviceInfo
-        info.flags = info.flags or
-                AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        serviceInfo = info
-    }
-
 }

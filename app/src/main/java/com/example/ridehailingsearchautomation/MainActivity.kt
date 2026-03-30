@@ -57,12 +57,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ridehailingsearchautomation.ui.theme.RideHailingSearchAutomationTheme
 import androidx.core.net.toUri
+import com.example.ridehailingsearchautomation.processors.GojekProcessor
+import com.example.ridehailingsearchautomation.processors.GrabProcessor
+import com.example.ridehailingsearchautomation.processors.ZigProcessor
 
 private var TAG = "MainActivityLogs"
-private val grabPackageName = "com.grabtaxi.passenger"
-private val gojekPackageName = "com.gojek.app"
-private val tadaPackageName = "io.mvlchain.tada"
-private val zigPackageName = "com.codigo.comfort"
+private const val grabPackageName = "com.grabtaxi.passenger"
+private const val gojekPackageName = "com.gojek.app"
+private const val tadaPackageName = "io.mvlchain.tada"
+private const val zigPackageName = "com.codigo.comfort"
 private var isDualSearchActive = false
 
 class MainActivity : ComponentActivity() {
@@ -259,7 +262,7 @@ fun RHSAApp(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Grab price display
-            rideFareRow(
+            RideFareRow(
                 R.drawable.grab_logo,
                 "Grab",
                 grabPriceState.value,
@@ -271,7 +274,7 @@ fun RHSAApp(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Gojek price display
-            rideFareRow(
+            RideFareRow(
                 R.drawable.gojek_logo,
                 "Gojek",
                 gojekPriceState.value,
@@ -295,7 +298,7 @@ fun RHSAApp(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Zig price display
-            rideFareRow(
+            RideFareRow(
                 R.drawable.zig_logo,
                 "Zig",
                 zigPriceState.value,
@@ -307,8 +310,8 @@ fun RHSAApp(
     }
 }
 
-@Composable
-fun rideFareRow(
+@Composable // Composable functions returning Unit should start with uppercase letter
+fun RideFareRow(
     logoId: Int,
     appName: String,
     price: String,
@@ -419,7 +422,7 @@ fun switchToApp(context: Context, packageName: String, appName: String) {
 }
 
 fun openGrab(context: Context, destination: String) {
-    GrabRideScraperService.destinationToType = destination
+    GrabProcessor.destinationToType = destination
     openAppByDeeplink(context, "grab://open?screenType=BOOKING", "Grab")
 }
 
@@ -428,7 +431,7 @@ fun switchToGrab(context: Context) {
 }
 
 fun openGojek(context: Context, destination: String) {
-    GojekRideScraperService.destinationToType = destination
+    GojekProcessor.destinationToType = destination
     openAppByDirectLaunch(context, gojekPackageName, "Gojek")
 }
 
@@ -446,7 +449,7 @@ fun switchToTada(context: Context) {
 }
 
 fun openZig(context: Context, destination: String) {
-    ZigRideScraperService.destinationToType = destination
+    ZigProcessor.destinationToType = destination
     openAppByDirectLaunch(context, zigPackageName, "Zig")
 }
 
