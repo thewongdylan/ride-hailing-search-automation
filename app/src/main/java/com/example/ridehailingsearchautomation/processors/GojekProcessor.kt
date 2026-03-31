@@ -93,50 +93,58 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
 
     private fun selectFirstSearchResult(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
-        val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131382467")
+        val recyclerViews = mutableListOf<AccessibilityNodeInfo>()
+        findNodesByClass(rootNode, "androidx.recyclerview.widget.RecyclerView", recyclerViews)
+        val poiTitles = recyclerViews.firstOrNull { it.isVisibleToUser && it.childCount > 0 }
         val tokens = destinationToType?.split(" ") ?: emptyList()
-        Log.d(TAG, "Checking ${poiTitles.size} results for '$destinationToType' using $tokens")
 
-        val targetPoiNode = poiTitles.find { node ->
-            val text = node.text?.toString()?.lowercase() ?: ""
-            tokens.isNotEmpty() && tokens.all { text.contains(it) }
-        }
+        if (poiTitles != null) {
+            val firstResult = poiTitles.getChild(0) ?: return
+            val firstResultRaw = firstResult.text?.toString() ?: ""
+            Log.d(TAG, "Checking $firstResultRaw against tokens: $tokens")
 
-        Log.d(TAG, "Found targetPoiNode: $targetPoiNode")
+            val isValidMatch = findNodeByTokens(firstResult, tokens) != null
+            if (isValidMatch) {
+                isClickPending = true
+                Log.d(TAG, "Valid match, starting stability delay")
+                handler.postDelayed({
+                    val freshServiceRoot = service.rootInActiveWindow
+                    if (freshServiceRoot != null) {
+                        val freshLists = mutableListOf<AccessibilityNodeInfo>()
+                        findNodesByClass(
+                            freshServiceRoot,
+                            "androidx.recyclerview.widget.RecyclerView",
+                            freshLists
+                        )
+                        val freshResults = freshLists.firstOrNull { it.childCount > 0 }
 
-        if (targetPoiNode != null) {
-            isClickPending = true
+                        val nodeToClick = freshResults?.getChild(0)
+                        val clickableRow = findClickableParent(nodeToClick)
+                        if (clickableRow != null) {
+                            val success =
+                                clickableRow.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            if (success) {
+                                val xButtons =
+                                    rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131371946")
+                                if (xButtons.isNotEmpty()) {
+                                    val clickableX = findClickableParent(xButtons[0])
+                                    clickableX?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                                    Log.d(TAG, "Clicked 'X' button to clear search query")
+                                }
 
-            handler.postDelayed({
-                val latestRoot = service.rootInActiveWindow
-                if (latestRoot != null) {
-                    val clickableRow = findClickableParent(targetPoiNode)
-                    if (clickableRow != null) {
-                        val success = clickableRow.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        if (success) {
-                            val xButtons =
-                                rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131371946")
-                            if (xButtons.isNotEmpty()) {
-                                val clickableX = findClickableParent(xButtons[0])
-                                clickableX?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                                Log.d(TAG, "Clicked 'X' button to clear search query")
+                                currState = AutomationState.CONFIRMING_PICKUP
+                                resultsVisibleStartTime = 0L
+                                Log.d(TAG, "Clicked first result after 1.5s delay")
                             }
-
-                            currState = AutomationState.CONFIRMING_PICKUP
-                            resultsVisibleStartTime = 0L
-                            Log.d(TAG, "Clicked first result after 1.5s delay")
+                        } else {
+                            Log.d(TAG, "Could not find clickable element")
                         }
-                    } else {
-                        Log.d(TAG, "Could not find clickable element")
                     }
-                }
-                isClickPending = false
-            }, 1000)
-        }  else {
-            if (poiTitles.isEmpty()) {
+                    isClickPending = false
+                }, 1000)
+            } else {
                 resultsVisibleStartTime = 0L
                 Log.d(TAG, "No results on screen. Timer reset.")
-            } else {
                 if (System.currentTimeMillis() % 2000 < 100) {
                     Log.d(TAG, "Ignoring stale results, waiting for network...")
                 }

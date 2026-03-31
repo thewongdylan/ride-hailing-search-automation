@@ -148,14 +148,27 @@ class GrabProcessor(override val service: AccessibilityService) : BaseScraperPro
 
     private fun scrapePrice(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.SCRAPING_PRICE) return
-        val currPrice = findJustGrabPrice(rootNode)
-        if (currPrice != null) {
-            broadcastPriceAndReturn(currPrice, "COM_EXAMPLE_GRAB_PRICE_UPDATE")
-            Log.d(TAG, "Broadcasted Grab price: $currPrice")
 
-            currState = AutomationState.IDLE
-            destinationToType = null
-            Log.d(TAG, "Workflow complete, reset state to IDLE")
+        val standardLabelNode = findNodeByText(rootNode, "Standard")
+        if (standardLabelNode != null) {
+            Log.d(TAG, "Found Standard label node")
+            val rowContainer = findClickableParent(standardLabelNode)
+            if (rowContainer != null) {
+                val priceNode = findNodeByTextFragment(rowContainer, "S$")
+                if (priceNode != null) {
+                    val price = priceNode.text?.toString()
+                    Log.d(TAG, "Found price: $price")
+                    broadcastPriceAndReturn(price ?: "", "COM_EXAMPLE_GRAB_PRICE_UPDATE")
+                    Log.d(TAG, "Broadcasted Grab price: $price")
+                    currState = AutomationState.IDLE
+                    destinationToType = null
+                    Log.d(TAG, "Workflow complete, reset state to IDLE")
+                } else {
+                    Log.d(TAG, "Could not find price")
+                }
+            }
+        } else {
+            Log.d(TAG, "Cannot find Standard label node")
         }
     }
 
@@ -178,42 +191,6 @@ class GrabProcessor(override val service: AccessibilityService) : BaseScraperPro
             val child = node.getChild(i) ?: continue
             val result = findGrabTextView(child)
             if (result != null) return result
-        }
-
-        return null
-    }
-
-    private fun findJustGrabPrice(rootNode: AccessibilityNodeInfo): String? {
-        val labelNodes = rootNode.findAccessibilityNodeInfosByViewId(
-            "com.grabtaxi.passenger:id/xsell_confirmation_taxi_type_name_autoscroll")
-
-        for (node in labelNodes) {
-            if (node.text?.toString()?.contains("JustGrab", ignoreCase = true) == true) {
-                var parentNode = node.parent
-                while (parentNode != null &&
-                    parentNode.viewIdResourceName != "com.grabtaxi.passenger:id/xsell_confirmation_item_container") {
-                    parentNode = parentNode.parent
-                }
-
-                if (parentNode != null) {
-                    return extractPriceFromRow(parentNode)
-                }
-            }
-        }
-        return null
-    }
-
-    private fun extractPriceFromRow(rowNode: AccessibilityNodeInfo) : String? {
-        val fareNodes = rowNode.findAccessibilityNodeInfosByViewId("com.grabtaxi.passenger:id/fareTextView")
-        val currencyNodes = rowNode.findAccessibilityNodeInfosByViewId("com.grabtaxi.passenger:id/currencyLeft")
-
-        if (fareNodes.isNotEmpty()) {
-            val amount = fareNodes[0].text?.toString() ?: ""
-            val currency = if (currencyNodes.isNotEmpty()) currencyNodes[0].text?.toString() ?: "S$" else "S$"
-
-            val fullPrice = "$currency$amount"
-            Log.d(TAG, "Found price: $fullPrice")
-            return fullPrice
         }
 
         return null
