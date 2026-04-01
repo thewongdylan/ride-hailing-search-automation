@@ -9,10 +9,11 @@ import android.view.accessibility.AccessibilityNodeInfo
 class ZigProcessor(override val service: AccessibilityService) : BaseScraperProcessor(service) {
     override val TAG = "ZigProcessor"
     override val packageName = "com.codigo.comfort"
-    private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
+    private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE }
     private var currState = AutomationState.IDLE
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
+    private var preAdState: AutomationState? = null
     companion object {
         var destinationToType: String? = null
         private var lastProcessedDestination : String? = null
@@ -36,18 +37,60 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
             return
         }
 
+        // Handling ads
+        val isAdVisible = detectAd(rootNode)
+        if (isAdVisible) {
+            if (currState != AutomationState.CLEARING_ADS) {
+                Log.d(TAG, "Detected ad during $currState, clearing ad")
+                preAdState = currState
+                currState = AutomationState.CLEARING_ADS
+            }
+            clearAd(rootNode)
+            return
+        }
+        if (currState == AutomationState.CLEARING_ADS) {
+            Log.d(TAG, "Cleared ad, resetting to $preAdState")
+            currState = preAdState ?: AutomationState.IDLE
+            preAdState = null
+        }
+
         // State machine: handle states within Zig app
         if (currPackage == packageName) {
             when (currState) {
                 AutomationState.IDLE -> if (destinationToType != null) navigateToSearch(rootNode)
-                AutomationState.CLEARING_ADS -> {
-//                    clearAds(rootNode)
-                }
+                AutomationState.CLEARING_ADS -> Log.d(TAG, "Clearing ads now, standby")
                 AutomationState.TYPING -> enterDestination(rootNode, destinationToType ?: return)
                 AutomationState.WAITING_FOR_RESULTS -> selectFirstSearchResult(rootNode)
                 AutomationState.CONFIRMING_PICKUP -> confirmPickup(rootNode)
                 AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
+        }
+    }
+
+    private fun detectAd(rootNode: AccessibilityNodeInfo) : Boolean {
+        val closeButton = findNodeByContentDescription(rootNode, "inapp_close_btn")
+        val adContainer = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/inapp_half_interstitial_image_frame_layout")
+
+        if (closeButton != null && adContainer.isNotEmpty()) {
+            Log.d(TAG, "Found ad")
+            return true
+        } else {
+            Log.d(TAG, "No ad found")
+        }
+        return false
+    }
+
+    private fun clearAd(rootNode: AccessibilityNodeInfo) {
+        val closeButton = findNodeByContentDescription(rootNode, "inapp_close_btn")
+        val adContainer = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/inapp_half_interstitial_image_frame_layout")
+
+        if (closeButton != null && adContainer.isNotEmpty()) {
+            Log.d(TAG, "Found ad")
+            val clickableNode = findClickableParent(closeButton)
+            clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            Log.d(TAG, "Clicked close button")
+        } else {
+            Log.d(TAG, "No ad found")
         }
     }
 
