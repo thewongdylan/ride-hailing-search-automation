@@ -75,6 +75,16 @@ abstract class BaseScraperProcessor(open val service: AccessibilityService) {
         return null
     }
 
+    fun findNodeByViewId(node: AccessibilityNodeInfo?, id: String): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.viewIdResourceName == id) return node
+        for (i in 0 until node.childCount) {
+            val found = findNodeByViewId(node.getChild(i), id)
+            if (found != null) return found
+        }
+        return null
+    }
+
     fun findClickableParent(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         var current = node
         while (current != null) {
