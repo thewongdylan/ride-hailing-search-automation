@@ -182,13 +182,19 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
                     currState = AutomationState.SCRAPING_PRICE
                     Log.d(TAG, "Clicked confirm button")
                 }
+            } else {
+                Log.d(TAG, "Could not find confirm button")
             }
         }
     }
 
     private fun scrapePrice(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.SCRAPING_PRICE) return
-        val currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
+        var currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing")
+        if (currPriceNode.isEmpty()) {
+            Log.d(TAG, "Price not found, trying with voucher")
+            currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
+        }
         val currPrice = currPriceNode.firstOrNull()?.text?.toString()
         Log.d(TAG, "Found currPrice: $currPrice")
 

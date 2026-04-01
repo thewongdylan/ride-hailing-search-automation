@@ -6,10 +6,10 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
-class ZigProcessor(override val service: AccessibilityService) : BaseScraperProcessor(service) {
-    override val TAG = "ZigProcessor"
-    override val packageName = "com.codigo.comfort"
-    private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE }
+class TadaProcessor(override val service: AccessibilityService) : BaseScraperProcessor(service) {
+    override val TAG = "TadaProcessor"
+    override val packageName = "io.mvlchain.tada"
+    private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_DESTINATION, CONFIRMING_PICKUP, SCRAPING_PRICE }
     private var currState = AutomationState.IDLE
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
@@ -30,37 +30,40 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
             resultsVisibleStartTime = 0L
         }
 
-        // Reset if user leaves Zig
+        // Reset if user leaves Tada
         if (currPackage != packageName && currState != AutomationState.IDLE) {
-            Log.d(TAG, "User left Zig, resetting state")
+            Log.d(TAG, "User left Tada, resetting state")
             currState = AutomationState.IDLE
             return
         }
 
         // Handling ads
-        val isAdVisible = detectAd(rootNode)
-        if (isAdVisible) {
-            if (currState != AutomationState.CLEARING_ADS) {
-                Log.d(TAG, "Detected ad during $currState, clearing ad")
-                preAdState = currState
-                currState = AutomationState.CLEARING_ADS
-            }
-            clearAd(rootNode)
-            return
-        }
-        if (currState == AutomationState.CLEARING_ADS) {
-            Log.d(TAG, "Cleared ad, resetting to $preAdState")
-            currState = preAdState ?: AutomationState.IDLE
-            preAdState = null
-        }
+//        val isAdVisible = detectAd(rootNode)
+//        if (isAdVisible) {
+//            if (currState != AutomationState.CLEARING_ADS) {
+//                Log.d(TAG, "Detected ad during $currState, clearing ad")
+//                preAdState = currState
+//                currState = AutomationState.CLEARING_ADS
+//            }
+//            clearAd(rootNode)
+//            return
+//        }
+//        if (currState == AutomationState.CLEARING_ADS) {
+//            Log.d(TAG, "Cleared ad, resetting to $preAdState")
+//            currState = preAdState ?: AutomationState.IDLE
+//            preAdState = null
+//        }
 
-        // State machine: handle states within Zig app
+        // State machine: handle states within Tada app
         if (currPackage == packageName) {
             when (currState) {
                 AutomationState.IDLE -> if (destinationToType != null) navigateToSearch(rootNode)
-                AutomationState.CLEARING_ADS -> Log.d(TAG, "Clearing ads now, standby")
+                AutomationState.CLEARING_ADS -> {
+//                    Log.d(TAG, "Clearing ads now, standby")
+                }
                 AutomationState.TYPING -> enterDestination(rootNode, destinationToType ?: return)
                 AutomationState.WAITING_FOR_RESULTS -> selectFirstSearchResult(rootNode)
+                AutomationState.CONFIRMING_DESTINATION -> confirmDestination(rootNode)
                 AutomationState.CONFIRMING_PICKUP -> confirmPickup(rootNode)
                 AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
@@ -95,7 +98,7 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
     }
 
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
-        val searchBar = findNodeByText(rootNode, "Where to?")
+        val searchBar = findNodeByText(rootNode, "Where to")
         if (searchBar != null) {
             Log.d(TAG, "Found search bar")
             val clickableNode = findClickableParent(searchBar)
@@ -137,15 +140,9 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
 
     private fun selectFirstSearchResult(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
-        val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/lblRecentLocationTradeName")
+        val poiTitles = findNodeByViewId(rootNode,"SearchContent_Box_Column_SearchListItem")
         val tokens = destinationToType?.split(" ") ?: emptyList()
-        Log.d(TAG, "Checking ${poiTitles.size} results for '$destinationToType' using $tokens")
-
-        val targetPoiNode = poiTitles.find { node ->
-            val text = node.text?.toString()?.lowercase() ?: ""
-            tokens.isNotEmpty() && tokens.all { text.contains(it) }
-        }
-
+        val targetPoiNode = findNodeByTokens(poiTitles, tokens)
         Log.d(TAG, "Found targetPoiNode: $targetPoiNode")
 
         if (targetPoiNode != null) {
@@ -153,10 +150,10 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
             val success = clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             if (success == true) {
                 Log.d(TAG, "Clicked first result")
-                currState = AutomationState.CONFIRMING_PICKUP
+                currState = AutomationState.CONFIRMING_DESTINATION
             }
         }  else {
-            if (poiTitles.isEmpty()) {
+            if (poiTitles != null) {
                 resultsVisibleStartTime = 0L
                 Log.d(TAG, "No results on screen. Timer reset.")
             } else {
@@ -165,21 +162,45 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
                 }
             }
         }
+    }
+
+    private fun confirmDestination(rootNode: AccessibilityNodeInfo) {
+        if (currState != AutomationState.CONFIRMING_DESTINATION) return
+
+        val confirmNode = findNodeByText(rootNode, "Set destination location")
+        if (confirmNode != null) {
+            Log.d(TAG, "Found confirm destination button by text")
+
+            if (System.currentTimeMillis() - lastClickConfirmTime < 1000) return
+            lastClickConfirmTime = System.currentTimeMillis()
+
+            if (!confirmNode.isVisibleToUser) {
+                Log.d(TAG, "Confirm destination button not yet visible")
+                return
+            }
+
+            val clickableButton = if (confirmNode.isClickable) confirmNode else findClickableParent(confirmNode)
+            val success = clickableButton?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (success == true) {
+                currState = AutomationState.CONFIRMING_PICKUP
+                Log.d(TAG, "Clicked confirm destination button")
+            }
+        }
 
     }
 
     private fun confirmPickup(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.CONFIRMING_PICKUP) return
 
-        val confirmNode = findNodeByText(rootNode,"Choose this pickup")
+        val confirmNode = findNodeByText(rootNode,"Set pickup location")
         if (confirmNode != null) {
-            Log.d(TAG, "Found next button by text")
+            Log.d(TAG, "Found confirm pickup button by text")
 
             if (System.currentTimeMillis() - lastClickConfirmTime < 1000) return
             lastClickConfirmTime = System.currentTimeMillis()
 
             if (!confirmNode.isVisibleToUser) {
-                Log.d(TAG, "Confirm button not yet visible")
+                Log.d(TAG, "Confirm pickup button not yet visible")
                 return
             }
 
@@ -187,20 +208,20 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
             val success = clickableButton?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             if (success == true) {
                 currState = AutomationState.SCRAPING_PRICE
-                Log.d(TAG, "Clicked confirm button")
+                Log.d(TAG, "Clicked confirm pickup button")
             }
         }
     }
 
     private fun scrapePrice(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.SCRAPING_PRICE) return
-        val currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/tvApplicableFare")
-        val currPrice = currPriceNode.firstOrNull()?.text?.toString()
+        val currPriceNode = findNodeByViewId(rootNode,"PriceText_Column_FlowableRow_Text")
+        val currPrice = currPriceNode?.text?.toString()
         Log.d(TAG, "Found currPrice: $currPrice")
 
         if (currPrice != null) {
-            broadcastPriceAndReturn(currPrice, "COM_EXAMPLE_ZIG_PRICE_UPDATE")
-            Log.d(TAG, "Broadcasted price: $currPrice")
+            broadcastPriceAndReturn("S$$currPrice", "COM_EXAMPLE_TADA_PRICE_UPDATE")
+            Log.d(TAG, "Broadcasted price: S$$currPrice")
 
             currState = AutomationState.IDLE
             destinationToType = null

@@ -59,6 +59,7 @@ import com.example.ridehailingsearchautomation.ui.theme.RideHailingSearchAutomat
 import androidx.core.net.toUri
 import com.example.ridehailingsearchautomation.processors.GojekProcessor
 import com.example.ridehailingsearchautomation.processors.GrabProcessor
+import com.example.ridehailingsearchautomation.processors.TadaProcessor
 import com.example.ridehailingsearchautomation.processors.ZigProcessor
 
 private var TAG = "MainActivityLogs"
@@ -106,7 +107,24 @@ class MainActivity : ComponentActivity() {
                 lastUpdatedGojekState.value = "$currentTime"
 
                 if (isDualSearchActive) {
-                    Log.d(TAG, "Gojek done, launching Zig")
+                    Log.d(TAG, "Gojek done, launching Tada")
+                    openTada(context!!, lastSearchedDestination.value)
+                }
+            }
+        }
+    }
+
+    private val tadaPriceReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val price = intent?.getStringExtra("price_value")
+            Log.d(TAG, "MainActivity received Tada price broadcast: $price")
+            if (price != null) {
+                tadaPriceState.value = price
+                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                lastUpdatedGojekState.value = "$currentTime"
+
+                if (isDualSearchActive) {
+                    Log.d(TAG, "Tada done, launching Zig")
                     openZig(context!!, lastSearchedDestination.value)
                 }
             }
@@ -139,6 +157,8 @@ class MainActivity : ComponentActivity() {
         registerReceiver(grabPriceReceiver, grabFilter, RECEIVER_EXPORTED)
         val gojekFilter = IntentFilter("COM_EXAMPLE_GOJEK_PRICE_UPDATE")
         registerReceiver(gojekPriceReceiver, gojekFilter, RECEIVER_EXPORTED)
+        val tadaFilter = IntentFilter("COM_EXAMPLE_TADA_PRICE_UPDATE")
+        registerReceiver(tadaPriceReceiver, tadaFilter, RECEIVER_EXPORTED)
         val zigFilter = IntentFilter("COM_EXAMPLE_ZIG_PRICE_UPDATE")
         registerReceiver(zigPriceReceiver, zigFilter, RECEIVER_EXPORTED)
 
@@ -163,6 +183,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         unregisterReceiver(grabPriceReceiver)
         unregisterReceiver(gojekPriceReceiver)
+        unregisterReceiver(tadaPriceReceiver)
         unregisterReceiver(zigPriceReceiver)
     }
 }
@@ -230,9 +251,6 @@ fun RHSAApp(
                         zigPriceState.value = fetchingPriceText
                         lastSearchedDestination.value = destination
                         openGrab(context, destination)
-//                        openGojek(context,destination)
-//                        openTada(context, destination)
-//                        openZig(context, destination)
                     }
                 }
             ) {
@@ -283,17 +301,17 @@ fun RHSAApp(
                 lastSearchedDestination,
             )
 
-//            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Tada price display
-//            rideFareRow(
-//                R.drawable.tada_logo,
-//                "Tada",
-//                tadaPriceState.value,
-//                lastUpdatedTadaState.value,
-//                { switchToTada(context) },
-//                lastSearchedDestination,
-//            )
+//             Tada price display
+            RideFareRow(
+                R.drawable.tada_logo,
+                "Tada",
+                tadaPriceState.value,
+                lastUpdatedTadaState.value,
+                { switchToTada(context) },
+                lastSearchedDestination,
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -440,7 +458,7 @@ fun switchToGojek(context: Context) {
 }
 
 fun openTada(context: Context, destination: String) {
-//    TadaRideScraperService.destinationToType = destination
+    TadaProcessor.destinationToType = destination
     openAppByDirectLaunch(context, tadaPackageName, "Tada")
 }
 

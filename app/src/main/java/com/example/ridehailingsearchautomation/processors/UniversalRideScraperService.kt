@@ -16,7 +16,7 @@ class UniversalRideScraperService: AccessibilityService() {
         processors = mapOf(
             "com.grabtaxi.passenger" to GrabProcessor(this),
             "com.gojek.app" to GojekProcessor(this),
-//            "io.mvlchain.tada" to TadaProcessor(this),
+            "io.mvlchain.tada" to TadaProcessor(this),
             "com.codigo.comfort" to ZigProcessor(this)
         )
 
