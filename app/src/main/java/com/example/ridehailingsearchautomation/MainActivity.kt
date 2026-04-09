@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
             if (price != null) {
                 tadaPriceState.value = price
                 val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                lastUpdatedGojekState.value = "$currentTime"
+                lastUpdatedTadaState.value = "$currentTime"
 
                 if (isDualSearchActive) {
                     Log.d(TAG, "Tada done, launching Zig")

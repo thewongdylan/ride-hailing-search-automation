@@ -109,29 +109,24 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
 
     private fun enterDestination(rootNode: AccessibilityNodeInfo, destination: String) {
         if (currState != AutomationState.TYPING) return
-        val editTexts = mutableListOf<AccessibilityNodeInfo>()
-        findNodesByClass(rootNode, "android.widget.EditText", editTexts)
-
-        Log.d(TAG, "Found editTexts")
-        if (editTexts.isNotEmpty()) {
-            val targetField = editTexts.find { it.isFocused } ?: if (editTexts.size > 1) editTexts[1] else editTexts[0]
-            Log.d(TAG, "Found EditText")
-
-            if (targetField.isEditable) {
-                val arguments = Bundle().apply {
-                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, destination)
-                }
-
-                val success = targetField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
-                if (success) {
-                    Log.d(TAG, "Successfully injected '$destination' into EditText")
-                    currState = AutomationState.WAITING_FOR_RESULTS
-                } else {
-                    Log.d(TAG, "Failed to inject '$destination' into EditText")
-                }
+        val allEditTexts = mutableListOf<AccessibilityNodeInfo>()
+        findNodesByClass(rootNode, "android.widget.EditText", allEditTexts)
+        val targetField = allEditTexts.find { it.isFocused } ?: allEditTexts.lastOrNull()
+        if (targetField != null) {
+            Log.d(TAG, "Found dropoff edit field")
+            val arguments = Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, destination)
+            }
+            val success = targetField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            if (success) {
+                Log.d(TAG, "Successfully injected '$destination' into EditText")
+                resultsVisibleStartTime = System.currentTimeMillis()
+                currState = AutomationState.WAITING_FOR_RESULTS
+            } else {
+                Log.d(TAG, "Failed to inject '$destination' into EditText")
             }
         } else {
-            Log.d(TAG, "No EditText found")
+            Log.d(TAG, "Could not find dropoff edit field")
         }
     }
 
