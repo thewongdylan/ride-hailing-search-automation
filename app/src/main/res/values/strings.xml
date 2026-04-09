@@ -3,6 +3,7 @@
     <string name="app_title">Ride Hailing Search</string>
     <string name="enter_destination_field">Enter destination here</string>
     <string name="current_fare">Current fare</string>
-    <string name="fetching_price">loading…</string>
+    <string name="fetching_price">Loading…</string>
     <string name="last_updated_at">Last updated at</string>
+    <string name="duration">Time taken</string>
 </resources>
