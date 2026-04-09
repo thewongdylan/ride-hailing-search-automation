@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -35,6 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,9 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -61,6 +63,9 @@ import com.example.ridehailingsearchautomation.processors.GojekProcessor
 import com.example.ridehailingsearchautomation.processors.GrabProcessor
 import com.example.ridehailingsearchautomation.processors.TadaProcessor
 import com.example.ridehailingsearchautomation.processors.ZigProcessor
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private var TAG = "MainActivityLogs"
 private const val grabPackageName = "com.grabtaxi.passenger"
@@ -71,26 +76,60 @@ private var isDualSearchActive = false
 
 class MainActivity : ComponentActivity() {
     private var lastSearchedDestination = mutableStateOf("")
-    private var grabPriceState = mutableStateOf("-")
+
+    // Price states
+    private var grabPriceState = mutableStateOf("")
+    private var gojekPriceState = mutableStateOf("")
+    private var tadaPriceState = mutableStateOf("")
+    private var zigPriceState = mutableStateOf("")
+
+    // Last updated states
     private var lastUpdatedGrabState = mutableStateOf("")
-    private var gojekPriceState = mutableStateOf("-")
     private var lastUpdatedGojekState = mutableStateOf("")
-    private var tadaPriceState = mutableStateOf("-")
     private var lastUpdatedTadaState = mutableStateOf("")
-    private var zigPriceState = mutableStateOf("-")
     private var lastUpdatedZigState = mutableStateOf("")
+
+    // Start times
+    private var grabStartTime = 0L
+    private var gojekStartTime = 0L
+    private var tadaStartTime = 0L
+    private var zigStartTime = 0L
+
+    // Durations
+    private var grabDuration = mutableStateOf("-")
+    private var gojekDuration = mutableStateOf("-")
+    private var tadaDuration = mutableStateOf("-")
+    private var zigDuration = mutableStateOf("-")
+
+    @SuppressLint("DefaultLocale")
+    private fun calculateDuration(startTime: Long): String {
+        if (startTime == 0L) return "-"
+        val durationMs = System.currentTimeMillis() - startTime
+        val seconds = durationMs / 1000.0
+        return String.format("%.1fs", seconds)
+    }
+
+    private fun startTimerSequence() {
+        grabDuration.value = "-"
+        gojekDuration.value = "-"
+        tadaDuration.value = "-"
+        zigDuration.value = "-"
+        grabStartTime = System.currentTimeMillis()
+    }
 
     private val grabPriceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val price = intent?.getStringExtra("price_value")
             Log.d(TAG, "MainActivity received Grab price broadcast: $price")
             if (price != null) {
-                grabPriceState.value = price
-                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                grabDuration.value = calculateDuration(grabStartTime)
+                val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdatedGrabState.value = "$currentTime"
+                grabPriceState.value = price
 
                 if (isDualSearchActive) {
                     Log.d(TAG, "Grab done, launching Gojek")
+                    gojekStartTime = System.currentTimeMillis()
                     openGojek(context!!, lastSearchedDestination.value)
                 }
             }
@@ -102,12 +141,14 @@ class MainActivity : ComponentActivity() {
             val price = intent?.getStringExtra("price_value")
             Log.d(TAG, "MainActivity received Gojek price broadcast: $price")
             if (price != null) {
-                gojekPriceState.value = price
-                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                gojekDuration.value = calculateDuration(gojekStartTime)
+                val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdatedGojekState.value = "$currentTime"
+                gojekPriceState.value = price
 
                 if (isDualSearchActive) {
                     Log.d(TAG, "Gojek done, launching Tada")
+                    tadaStartTime = System.currentTimeMillis()
                     openTada(context!!, lastSearchedDestination.value)
                 }
             }
@@ -119,12 +160,14 @@ class MainActivity : ComponentActivity() {
             val price = intent?.getStringExtra("price_value")
             Log.d(TAG, "MainActivity received Tada price broadcast: $price")
             if (price != null) {
-                tadaPriceState.value = price
-                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                tadaDuration.value = calculateDuration(tadaStartTime)
+                val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdatedTadaState.value = "$currentTime"
+                tadaPriceState.value = price
 
                 if (isDualSearchActive) {
                     Log.d(TAG, "Tada done, launching Zig")
+                    zigStartTime = System.currentTimeMillis()
                     openZig(context!!, lastSearchedDestination.value)
                 }
             }
@@ -136,9 +179,10 @@ class MainActivity : ComponentActivity() {
             val price = intent?.getStringExtra("price_value")
             Log.d(TAG, "MainActivity received Zig price broadcast: $price")
             if (price != null) {
-                zigPriceState.value = price
-                val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                zigDuration.value = calculateDuration(zigStartTime)
+                val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 lastUpdatedZigState.value = "$currentTime"
+                zigPriceState.value = price
 
                 isDualSearchActive = false
                 Log.d(TAG, "Dual search done")
@@ -167,13 +211,18 @@ class MainActivity : ComponentActivity() {
                 RHSAApp(
                     lastSearchedDestination = lastSearchedDestination,
                     grabPriceState = grabPriceState,
-                    lastUpdatedGrabState = lastUpdatedGrabState,
                     gojekPriceState = gojekPriceState,
-                    lastUpdatedGojekState = lastUpdatedGojekState,
                     tadaPriceState = tadaPriceState,
-                    lastUpdatedTadaState = lastUpdatedTadaState,
                     zigPriceState = zigPriceState,
-                    lastUpdatedZigState = lastUpdatedZigState
+                    lastUpdatedGrabState = lastUpdatedGrabState,
+                    lastUpdatedGojekState = lastUpdatedGojekState,
+                    lastUpdatedTadaState = lastUpdatedTadaState,
+                    lastUpdatedZigState = lastUpdatedZigState,
+                    grabDuration = grabDuration,
+                    gojekDuration = gojekDuration,
+                    tadaDuration = tadaDuration,
+                    zigDuration = zigDuration,
+                    onSearchTriggered = { startTimerSequence() }
                 )
             }
         }
@@ -193,13 +242,18 @@ class MainActivity : ComponentActivity() {
 fun RHSAApp(
     lastSearchedDestination: MutableState<String>,
     grabPriceState: MutableState<String>,
-    lastUpdatedGrabState: MutableState<String>,
     gojekPriceState: MutableState<String>,
-    lastUpdatedGojekState: MutableState<String>,
     tadaPriceState: MutableState<String>,
-    lastUpdatedTadaState: MutableState<String>,
     zigPriceState: MutableState<String>,
+    lastUpdatedGrabState: MutableState<String>,
+    lastUpdatedGojekState: MutableState<String>,
+    lastUpdatedTadaState: MutableState<String>,
     lastUpdatedZigState: MutableState<String>,
+    grabDuration: MutableState<String>,
+    gojekDuration: MutableState<String>,
+    tadaDuration: MutableState<String>,
+    zigDuration: MutableState<String>,
+    onSearchTriggered: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var destination by remember { mutableStateOf("bedok mall") }
@@ -212,14 +266,17 @@ fun RHSAApp(
                 title = {
                     Text(
                         text = stringResource(R.string.app_title),
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 28.sp,
+                        color = colorResource(R.color.off_white)
                     )
                 },
                 colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = colorResource(R.color.floral_green)
                 )
             )
-        }
+        },
+        containerColor = colorResource(R.color.light_grey)
     ) { innerPadding ->
         Column(
             modifier = modifier
@@ -229,7 +286,7 @@ fun RHSAApp(
                 .verticalScroll(rememberScrollState())
                 .safeDrawingPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
         ) {
             // Destination search bar
             OutlinedTextField(
@@ -250,17 +307,26 @@ fun RHSAApp(
                         tadaPriceState.value = fetchingPriceText
                         zigPriceState.value = fetchingPriceText
                         lastSearchedDestination.value = destination
+                        onSearchTriggered()
                         openGrab(context, destination)
                     }
-                }
+                },
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(
+                    horizontal = 16.dp,
+                    vertical = 6.dp
+                ),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = colorResource(R.color.floral_green)
+                )
             ) {
-                Text("Search")
+                Text("Check Prices")
             }
 
-            // Last searched destination
             if (lastSearchedDestination.value.isNotBlank()) {
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Last searched destination
                 Text(
                     text = "Results for: ${lastSearchedDestination.value}",
                     style = MaterialTheme.typography.bodyMedium,
@@ -275,55 +341,51 @@ fun RHSAApp(
                     thickness = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant
                 )
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                // Grab price display
+                RideFareRow(
+                    logoId = R.drawable.grab_logo,
+                    appName = "Grab",
+                    price = grabPriceState.value,
+                    lastUpdated = lastUpdatedGrabState.value,
+                    duration = grabDuration.value,
+                    onSwitchToApp = { switchToGrab(context) },
+                    lastSearchedDestination = lastSearchedDestination,
+                )
 
-            // Grab price display
-            RideFareRow(
-                R.drawable.grab_logo,
-                "Grab",
-                grabPriceState.value,
-                lastUpdatedGrabState.value,
-                { switchToGrab(context) },
-                lastSearchedDestination,
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Gojek price display
-            RideFareRow(
-                R.drawable.gojek_logo,
-                "Gojek",
-                gojekPriceState.value,
-                lastUpdatedGojekState.value,
-                { switchToGojek(context) },
-                lastSearchedDestination,
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+                // Gojek price display
+                RideFareRow(
+                    logoId = R.drawable.gojek_logo,
+                    appName = "Gojek",
+                    price =gojekPriceState.value,
+                    lastUpdated = lastUpdatedGojekState.value,
+                    duration = gojekDuration.value,
+                    onSwitchToApp = { switchToGojek(context) },
+                    lastSearchedDestination = lastSearchedDestination,
+                )
 
 //             Tada price display
-            RideFareRow(
-                R.drawable.tada_logo,
-                "Tada",
-                tadaPriceState.value,
-                lastUpdatedTadaState.value,
-                { switchToTada(context) },
-                lastSearchedDestination,
-            )
+                RideFareRow(
+                    logoId = R.drawable.tada_logo,
+                    appName = "Tada",
+                    price = tadaPriceState.value,
+                    lastUpdated =lastUpdatedTadaState.value,
+                    duration = tadaDuration.value,
+                    onSwitchToApp = { switchToTada(context) },
+                    lastSearchedDestination = lastSearchedDestination,
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Zig price display
-            RideFareRow(
-                R.drawable.zig_logo,
-                "Zig",
-                zigPriceState.value,
-                lastUpdatedZigState.value,
-                { switchToZig(context) },
-                lastSearchedDestination,
-            )
+                // Zig price display
+                RideFareRow(
+                    logoId = R.drawable.zig_logo,
+                    appName = "Zig",
+                    price = zigPriceState.value,
+                    lastUpdated = lastUpdatedZigState.value,
+                    duration = zigDuration.value,
+                    onSwitchToApp = { switchToZig(context) },
+                    lastSearchedDestination = lastSearchedDestination,
+                )
+            }
         }
     }
 }
@@ -334,59 +396,87 @@ fun RideFareRow(
     appName: String,
     price: String,
     lastUpdated: String,
+    duration: String,
     onSwitchToApp: () -> Unit,
     lastSearchedDestination: MutableState<String>,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = Modifier
+    Surface(
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 28.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        color = colorResource(id = R.color.off_white),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
     ) {
-        // App logo
-        Image(
-            painter = painterResource(logoId),
-            contentDescription = "$appName Logo",
+        Row(
             modifier = Modifier
-                .size(45.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-        )
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
+                .fillMaxWidth()
+                .padding(12.dp), // internal padding within card
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Current fare
-            Text(
-                text = "${stringResource(R.string.current_fare)}: $price",
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
-                lineHeight = 14.sp
+            // App logo
+            Image(
+                painter = painterResource(logoId),
+                contentDescription = "$appName Logo",
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
             )
 
-            // Last updated at
-            Text(
-                text = "${stringResource(R.string.last_updated_at)}: $lastUpdated",
-                fontStyle = FontStyle.Italic,
-                fontSize = 12.sp,
-                textAlign = TextAlign.Left,
-                modifier = Modifier.fillMaxWidth(),
-                lineHeight = 14.sp
-            )
-        }
-        // Open Tada button
-        if (lastSearchedDestination.value.isNotBlank()) {
-            Button(
-                onClick = onSwitchToApp,
-                modifier = Modifier.padding(vertical = 8.dp),
-                contentPadding = PaddingValues(
-                    horizontal = 8.dp,
-                    vertical = 6.dp
-                )
+            Spacer(modifier = Modifier.width(4.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
             ) {
-                Text("Open $appName")
+                // Current fare
+                Text(
+                    text = price,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    lineHeight = 14.sp
+                )
+
+                // Last updated at
+                if (lastUpdated.isNotBlank()) {
+                    Text(
+                        text = "${stringResource(R.string.last_updated_at)}: $lastUpdated",
+                        color = MaterialTheme.colorScheme.outline,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Left,
+                        modifier = Modifier.fillMaxWidth(),
+                        lineHeight = 12.sp,
+                    )
+                }
+
+                // Duration
+                if (duration.isNotBlank()) {
+                    Text(
+                        text = "${stringResource(R.string.duration)}: $duration",
+                        color = MaterialTheme.colorScheme.outline,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Left,
+                        modifier = Modifier.fillMaxWidth(),
+                        lineHeight = 12.sp,
+                    )
+                }
+            }
+            // Open app button
+            if (lastSearchedDestination.value.isNotBlank()) {
+                Button(
+                    onClick = onSwitchToApp,
+                    modifier = Modifier,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = 10.dp,
+                        vertical = 6.dp
+                    ),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = colorResource(R.color.floral_green)),
+                ) {
+                    Text("Open")
+                }
             }
         }
     }
@@ -480,27 +570,40 @@ fun switchToZig(context: Context) {
 @Composable
 fun RHSAPreview() {
     val lastSearchedDestination = remember { mutableStateOf("")}
-    val grabPriceState = remember { mutableStateOf("-")}
-    val lastUpdatedGrabState = remember { mutableStateOf("")}
-    val gojekPriceState = remember { mutableStateOf("-")}
-    val lastUpdatedGojekState = remember { mutableStateOf("")}
-    val tadaPriceState = remember { mutableStateOf("-") }
-    val lastUpdatedTadaState = remember { mutableStateOf("") }
-    val zigPriceState = remember { mutableStateOf("-") }
-    val lastUpdatedZigState = remember { mutableStateOf("") }
 
+    val grabPriceState = remember { mutableStateOf("S$10.10")}
+    val gojekPriceState = remember { mutableStateOf("S$11.11")}
+    val tadaPriceState = remember { mutableStateOf("S$12.12") }
+    val zigPriceState = remember { mutableStateOf("S13.13") }
+
+    val lastUpdatedGrabState = remember { mutableStateOf("10:10:10")}
+    val lastUpdatedGojekState = remember { mutableStateOf("11:11:11")}
+    val lastUpdatedTadaState = remember { mutableStateOf("12:12:12") }
+    val lastUpdatedZigState = remember { mutableStateOf("13:13:13") }
+
+    val grabDuration = remember { mutableStateOf("10.10s") }
+    val gojekDuration = remember { mutableStateOf("11.11s") }
+    val tadaDuration = remember { mutableStateOf("12.12s") }
+    val zigDuration = remember { mutableStateOf("13.13s") }
+
+    val onSearchTriggered = {}
 
     RideHailingSearchAutomationTheme {
         RHSAApp(
             lastSearchedDestination,
             grabPriceState,
-            lastUpdatedGrabState,
             gojekPriceState,
-            lastUpdatedGojekState,
             tadaPriceState,
-            lastUpdatedTadaState,
             zigPriceState,
-            lastUpdatedZigState
+            lastUpdatedGrabState,
+            lastUpdatedGojekState,
+            lastUpdatedTadaState,
+            lastUpdatedZigState,
+            grabDuration,
+            gojekDuration,
+            tadaDuration,
+            zigDuration,
+            onSearchTriggered
         )
     }
 }
