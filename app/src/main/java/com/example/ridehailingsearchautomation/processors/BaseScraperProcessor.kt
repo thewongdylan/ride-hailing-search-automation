@@ -3,6 +3,7 @@ package com.example.ridehailingsearchautomation.processors
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -13,6 +14,13 @@ abstract class BaseScraperProcessor(open val service: AccessibilityService) {
     abstract val TAG: String
     abstract fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo)
     val context: Context get() = service
+
+    open fun resetToIdle() {}
+
+    fun clearHandler(handler : Handler) {
+        handler.removeCallbacksAndMessages(null)
+    }
+
     fun findNodesByClass(node: AccessibilityNodeInfo, className: String, result: MutableList<AccessibilityNodeInfo>) {
         if (node.className?.toString() == className) {
             result.add(node)
