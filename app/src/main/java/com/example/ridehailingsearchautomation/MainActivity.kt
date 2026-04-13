@@ -205,6 +205,9 @@ class MainActivity : ComponentActivity() {
         registerReceiver(tadaPriceReceiver, tadaFilter, RECEIVER_EXPORTED)
         val zigFilter = IntentFilter("COM_EXAMPLE_ZIG_PRICE_UPDATE")
         registerReceiver(zigPriceReceiver, zigFilter, RECEIVER_EXPORTED)
+        val resetIntent = Intent("ACTION_GLOBAL_RESET_PROCESSORS")
+        sendBroadcast(resetIntent)
+        Log.d(TAG, "onCreate: Resetting processors")
 
         setContent {
             RideHailingSearchAutomationTheme {

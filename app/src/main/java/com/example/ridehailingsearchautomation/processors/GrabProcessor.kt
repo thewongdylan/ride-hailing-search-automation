@@ -49,6 +49,12 @@ class GrabProcessor(override val service: AccessibilityService) : BaseScraperPro
         }
     }
 
+    override fun resetToIdle() {
+        currState = AutomationState.IDLE
+        resultsVisibleStartTime = 0L
+        lastClickConfirmTime = 0L
+    }
+
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.IDLE) return
         val grabTextView = findGrabTextView(rootNode)

@@ -67,6 +67,13 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
         }
     }
 
+    override fun resetToIdle() {
+        currState = AutomationState.IDLE
+        resultsVisibleStartTime = 0L
+        lastClickConfirmTime = 0L
+        preAdState = null
+    }
+
     private fun detectAd(rootNode: AccessibilityNodeInfo) : Boolean {
         val closeButton = findNodeByContentDescription(rootNode, "inapp_close_btn")
         val adContainer = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/inapp_half_interstitial_image_frame_layout")

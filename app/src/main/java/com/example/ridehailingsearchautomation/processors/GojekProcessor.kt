@@ -52,6 +52,15 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
         }
     }
 
+    override fun resetToIdle() {
+        currState = AutomationState.IDLE
+        resultsVisibleStartTime = 0L
+        lastClickConfirmTime = 0L
+        isClickPending = false
+        clearHandler(handler)
+    }
+
+
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
         val searchBar = findNodeByText(rootNode,"Search for a destination")
         if (searchBar != null) {
@@ -154,7 +163,11 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
 
     private fun confirmPickup(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.CONFIRMING_PICKUP) return
-        val priceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
+        var priceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing")
+        if (priceNode.isEmpty()) {
+            Log.d(TAG, "Price not found, trying with voucher")
+            priceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
+        }
         if (priceNode.isNotEmpty()) {
             Log.d(TAG, "Price detected! Bypassing confirmation.")
             currState = AutomationState.SCRAPING_PRICE
