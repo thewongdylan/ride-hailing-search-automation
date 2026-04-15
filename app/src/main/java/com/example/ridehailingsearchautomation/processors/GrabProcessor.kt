@@ -12,8 +12,10 @@ class GrabProcessor(override val service: AccessibilityService) : BaseScraperPro
 
     private enum class AutomationState { IDLE, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
     private var currState = AutomationState.IDLE
+    private var isWatchdogActive = false
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
+    private var isPriceFound = false
     companion object {
         var destinationToType: String? = null
         private var lastProcessedDestination : String? = null
@@ -21,6 +23,13 @@ class GrabProcessor(override val service: AccessibilityService) : BaseScraperPro
 
     override fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo) {
         val currPackage = event.packageName?.toString() ?: ""
+
+        // Start 15s timer
+        if (currState == AutomationState.TYPING && !isWatchdogActive) {
+            startWatchdog("Grab") {
+                broadcastPriceAndReturn("Timeout", "COM_EXAMPLE_GRAB_PRICE_UPDATE")
+            }
+        }
 
         // Reset if new destination sent from app
         if (destinationToType != null && destinationToType != lastProcessedDestination) {
@@ -47,12 +56,20 @@ class GrabProcessor(override val service: AccessibilityService) : BaseScraperPro
                 AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
         }
+
+        if (isPriceFound) {
+            cancelWatchdog()
+            isPriceFound = false
+        }
     }
 
     override fun resetToIdle() {
         currState = AutomationState.IDLE
         resultsVisibleStartTime = 0L
         lastClickConfirmTime = 0L
+        isPriceFound = false
+        cancelWatchdog()
+        clearHandler(handler)
     }
 
     private fun navigateToSearch(rootNode: AccessibilityNodeInfo) {
@@ -163,6 +180,7 @@ class GrabProcessor(override val service: AccessibilityService) : BaseScraperPro
                 val priceNode = findNodeByTextFragment(rowContainer, "S$")
                 if (priceNode != null) {
                     val price = priceNode.text?.toString()
+                    isPriceFound = true
                     Log.d(TAG, "Found price: $price")
                     broadcastPriceAndReturn(price ?: "", "COM_EXAMPLE_GRAB_PRICE_UPDATE")
                     Log.d(TAG, "Broadcasted Grab price: $price")
