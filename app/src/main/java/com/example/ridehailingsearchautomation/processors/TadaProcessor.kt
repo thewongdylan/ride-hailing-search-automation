@@ -11,8 +11,10 @@ class TadaProcessor(override val service: AccessibilityService) : BaseScraperPro
     override val packageName = "io.mvlchain.tada"
     private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_DESTINATION, CONFIRMING_PICKUP, SCRAPING_PRICE }
     private var currState = AutomationState.IDLE
+    private var isWatchdogActive = false
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
+    private var isPriceFound = false
     private var preAdState: AutomationState? = null
     companion object {
         var destinationToType: String? = null
@@ -21,6 +23,13 @@ class TadaProcessor(override val service: AccessibilityService) : BaseScraperPro
 
     override fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo) {
         val currPackage = event.packageName?.toString() ?: ""
+
+        // Start 15s timer
+        if (currState == AutomationState.TYPING && !isWatchdogActive) {
+            startWatchdog("Tada") {
+                broadcastPriceAndReturn("Timeout", "COM_EXAMPLE_TADA_PRICE_UPDATE")
+            }
+        }
 
         // Reset if new destination sent from app
         if (destinationToType != null && destinationToType != lastProcessedDestination) {
@@ -68,6 +77,11 @@ class TadaProcessor(override val service: AccessibilityService) : BaseScraperPro
                 AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
         }
+
+        if (isPriceFound) {
+            cancelWatchdog()
+            isPriceFound = false
+        }
     }
 
     override fun resetToIdle() {
@@ -75,6 +89,9 @@ class TadaProcessor(override val service: AccessibilityService) : BaseScraperPro
         resultsVisibleStartTime = 0L
         lastClickConfirmTime = 0L
         preAdState = null
+        isPriceFound = false
+        cancelWatchdog()
+        clearHandler(handler)
     }
 
     private fun detectAd(rootNode: AccessibilityNodeInfo) : Boolean {
@@ -224,6 +241,7 @@ class TadaProcessor(override val service: AccessibilityService) : BaseScraperPro
         if (currState != AutomationState.SCRAPING_PRICE) return
         val currPriceNode = findNodeByViewId(rootNode,"PriceText_Column_FlowableRow_Text")
         val currPrice = currPriceNode?.text?.toString()
+        isPriceFound = true
         Log.d(TAG, "Found currPrice: $currPrice")
 
         if (currPrice != null) {

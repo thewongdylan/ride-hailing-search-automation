@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -12,8 +13,27 @@ import com.example.ridehailingsearchautomation.MainActivity
 abstract class BaseScraperProcessor(open val service: AccessibilityService) {
     abstract val packageName: String
     abstract val TAG: String
-    abstract fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo)
     val context: Context get() = service
+    protected val handler = Handler(Looper.getMainLooper())
+    private var watchdogRunnable: Runnable ? = null
+
+    abstract fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo)
+
+    fun startWatchdog(appName: String, onTimeout: () -> Unit) {
+        cancelWatchdog()
+        watchdogRunnable = Runnable {
+            Log.e("Watchdog", "$appName timed out")
+            onTimeout()
+        }
+        watchdogRunnable?.let { handler.postDelayed(it, 15000) }
+    }
+
+    fun cancelWatchdog() {
+        watchdogRunnable?.let {
+            handler.removeCallbacks(it)
+            watchdogRunnable = null
+        }
+    }
 
     open fun resetToIdle() {}
 

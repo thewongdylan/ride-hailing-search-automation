@@ -11,8 +11,10 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
     override val packageName = "com.codigo.comfort"
     private enum class AutomationState { IDLE, CLEARING_ADS, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE }
     private var currState = AutomationState.IDLE
+    private var isWatchdogActive = false
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
+    private var isPriceFound = false
     private var preAdState: AutomationState? = null
     companion object {
         var destinationToType: String? = null
@@ -21,6 +23,13 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
 
     override fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo) {
         val currPackage = event.packageName?.toString() ?: ""
+
+        // Start 15s timer
+        if (currState == AutomationState.TYPING && !isWatchdogActive) {
+            startWatchdog("Zig") {
+                broadcastPriceAndReturn("Timeout", "COM_EXAMPLE_ZIG_PRICE_UPDATE")
+            }
+        }
 
         // Reset if new destination sent from app
         if (destinationToType != null && destinationToType != lastProcessedDestination) {
@@ -65,6 +74,11 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
                 AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
         }
+
+        if (isPriceFound) {
+            cancelWatchdog()
+            isPriceFound = false
+        }
     }
 
     override fun resetToIdle() {
@@ -72,6 +86,9 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
         resultsVisibleStartTime = 0L
         lastClickConfirmTime = 0L
         preAdState = null
+        isPriceFound = false
+        cancelWatchdog()
+        clearHandler(handler)
     }
 
     private fun detectAd(rootNode: AccessibilityNodeInfo) : Boolean {
@@ -198,6 +215,7 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
         if (currState != AutomationState.SCRAPING_PRICE) return
         val currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/tvApplicableFare")
         val currPrice = currPriceNode.firstOrNull()?.text?.toString()
+        isPriceFound = true
         Log.d(TAG, "Found currPrice: $currPrice")
 
         if (currPrice != null) {

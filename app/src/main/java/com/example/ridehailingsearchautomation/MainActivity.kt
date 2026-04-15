@@ -438,7 +438,8 @@ fun RideFareRow(
                     text = price,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
-                    lineHeight = 14.sp
+                    lineHeight = 14.sp,
+                    color = if (price == "Timeout") colorResource(R.color.red) else colorResource(R.color.black),
                 )
 
                 // Last updated at

@@ -2,8 +2,6 @@ package com.example.ridehailingsearchautomation.processors
 
 import android.accessibilityservice.AccessibilityService
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -13,10 +11,11 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
     override val packageName = "com.gojek.app"
     private enum class AutomationState { IDLE, TYPING, WAITING_FOR_RESULTS, CONFIRMING_PICKUP, SCRAPING_PRICE}
     private var currState = AutomationState.IDLE
+    private var isWatchdogActive = false
     private var resultsVisibleStartTime = 0L
     private var lastClickConfirmTime = 0L
-    private val handler = Handler(Looper.getMainLooper())
     private var isClickPending = false
+    private var isPriceFound = false
     companion object {
         var destinationToType: String? = null
         private var lastProcessedDestination : String? = null
@@ -24,6 +23,13 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
 
     override fun onAccessibilityEvent(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo) {
         val currPackage = event.packageName?.toString() ?: ""
+
+        // Start 15s timer
+        if (currState == AutomationState.TYPING && !isWatchdogActive) {
+            startWatchdog("Gojek") {
+                broadcastPriceAndReturn("Timeout", "COM_EXAMPLE_GOJEK_PRICE_UPDATE")
+            }
+        }
 
         // Reset if new destination sent from app
         if (destinationToType != null && destinationToType != lastProcessedDestination) {
@@ -50,6 +56,11 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
                 AutomationState.SCRAPING_PRICE -> scrapePrice(rootNode)
             }
         }
+
+        if (isPriceFound) {
+            cancelWatchdog()
+            isPriceFound = false
+        }
     }
 
     override fun resetToIdle() {
@@ -57,6 +68,8 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
         resultsVisibleStartTime = 0L
         lastClickConfirmTime = 0L
         isClickPending = false
+        isPriceFound = false
+        cancelWatchdog()
         clearHandler(handler)
     }
 
@@ -209,6 +222,7 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
             currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
         }
         val currPrice = currPriceNode.firstOrNull()?.text?.toString()
+        isPriceFound = true
         Log.d(TAG, "Found currPrice: $currPrice")
 
         if (currPrice != null) {
