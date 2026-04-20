@@ -2,6 +2,7 @@ package com.example.ridehailingsearchautomation
 
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -57,12 +58,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.provider.Settings
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
 import com.example.ridehailingsearchautomation.ui.theme.RideHailingSearchAutomationTheme
 import androidx.core.net.toUri
 import com.example.ridehailingsearchautomation.processors.GojekProcessor
 import com.example.ridehailingsearchautomation.processors.GrabProcessor
 import com.example.ridehailingsearchautomation.processors.TadaProcessor
 import com.example.ridehailingsearchautomation.processors.ZigProcessor
+import com.example.ridehailingsearchautomation.processors.UniversalRideScraperService
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -262,6 +268,18 @@ fun RHSAApp(
     var destination by remember { mutableStateOf("bedok mall") }
     val context = LocalContext.current
     val fetchingPriceText = stringResource(R.string.fetching_price)
+    var isServiceEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val currStatus = isAccessibilityServiceEnabled(context)
+            if (isServiceEnabled != currStatus) {
+                isServiceEnabled = currStatus
+            }
+            kotlinx.coroutines.delay(500)
+        }
+    }
+//    val isServiceEnabled = true
 
     Scaffold(
         topBar = {
@@ -281,115 +299,184 @@ fun RHSAApp(
         },
         containerColor = colorResource(R.color.light_grey)
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = modifier
                 .fillMaxSize()
-                .statusBarsPadding()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .safeDrawingPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
         ) {
-            // Destination search bar
-            OutlinedTextField(
-                value = destination,
-                onValueChange = { destination = it},
-                label = { Text(stringResource(R.string.enter_destination_field)) }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Search button
-            Button(
-                onClick = {
-                    if (destination.isNotBlank()) {
-                        isDualSearchActive = true
-                        grabPriceState.value = fetchingPriceText
-                        gojekPriceState.value = fetchingPriceText
-                        tadaPriceState.value = fetchingPriceText
-                        zigPriceState.value = fetchingPriceText
-                        lastSearchedDestination.value = destination
-                        onSearchTriggered()
-                        openGrab(context, destination)
-                    }
-                },
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                contentPadding = PaddingValues(
-                    horizontal = 16.dp,
-                    vertical = 6.dp
-                ),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = colorResource(R.color.floral_green)
-                )
+            Column(
+                modifier = modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .verticalScroll(rememberScrollState())
+                    .safeDrawingPadding(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                Text("Check Prices")
-            }
+                if (lastSearchedDestination.value.isBlank()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
 
-            if (lastSearchedDestination.value.isNotBlank()) {
-                Spacer(modifier = Modifier.height(16.dp))
+                // Destination search field
+                SearchField(
+                    destination = destination,
+                    onDestinationChange = { destination = it },
+                    onSearchButtonClicked = {
+                        if (destination.isNotBlank()) {
+                            isDualSearchActive = true
+                            grabPriceState.value = fetchingPriceText
+                            gojekPriceState.value = fetchingPriceText
+                            tadaPriceState.value = fetchingPriceText
+                            zigPriceState.value = fetchingPriceText
 
-                // Last searched destination
-                Text(
-                    text = "Results for: ${lastSearchedDestination.value}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                            lastSearchedDestination.value = destination
+                            onSearchTriggered()
+                            openGrab(context, destination)
+                        }
+                    }
                 )
 
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
-                    thickness = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
+                if (lastSearchedDestination.value.isBlank()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                // Grab price display
-                RideFareRow(
-                    logoId = R.drawable.grab_logo,
-                    appName = "Grab",
-                    price = grabPriceState.value,
-                    lastUpdated = lastUpdatedGrabState.value,
-                    duration = grabDuration.value,
-                    onSwitchToApp = { switchToGrab(context) },
-                    lastSearchedDestination = lastSearchedDestination,
-                )
+                    // Last searched destination
+                    Text(
+                        text = "Results for: ${lastSearchedDestination.value}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
 
-                // Gojek price display
-                RideFareRow(
-                    logoId = R.drawable.gojek_logo,
-                    appName = "Gojek",
-                    price =gojekPriceState.value,
-                    lastUpdated = lastUpdatedGojekState.value,
-                    duration = gojekDuration.value,
-                    onSwitchToApp = { switchToGojek(context) },
-                    lastSearchedDestination = lastSearchedDestination,
-                )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    // Grab price display
+                    RideFareRow(
+                        logoId = R.drawable.grab_logo,
+                        appName = "Grab",
+                        price = grabPriceState.value,
+                        lastUpdated = lastUpdatedGrabState.value,
+                        duration = grabDuration.value,
+                        onSwitchToApp = { switchToGrab(context) },
+                        lastSearchedDestination = lastSearchedDestination,
+                    )
+
+                    // Gojek price display
+                    RideFareRow(
+                        logoId = R.drawable.gojek_logo,
+                        appName = "Gojek",
+                        price = gojekPriceState.value,
+                        lastUpdated = lastUpdatedGojekState.value,
+                        duration = gojekDuration.value,
+                        onSwitchToApp = { switchToGojek(context) },
+                        lastSearchedDestination = lastSearchedDestination,
+                    )
 
 //             Tada price display
-                RideFareRow(
-                    logoId = R.drawable.tada_logo,
-                    appName = "Tada",
-                    price = tadaPriceState.value,
-                    lastUpdated =lastUpdatedTadaState.value,
-                    duration = tadaDuration.value,
-                    onSwitchToApp = { switchToTada(context) },
-                    lastSearchedDestination = lastSearchedDestination,
-                )
+                    RideFareRow(
+                        logoId = R.drawable.tada_logo,
+                        appName = "Tada",
+                        price = tadaPriceState.value,
+                        lastUpdated = lastUpdatedTadaState.value,
+                        duration = tadaDuration.value,
+                        onSwitchToApp = { switchToTada(context) },
+                        lastSearchedDestination = lastSearchedDestination,
+                    )
 
-                // Zig price display
-                RideFareRow(
-                    logoId = R.drawable.zig_logo,
-                    appName = "Zig",
-                    price = zigPriceState.value,
-                    lastUpdated = lastUpdatedZigState.value,
-                    duration = zigDuration.value,
-                    onSwitchToApp = { switchToZig(context) },
-                    lastSearchedDestination = lastSearchedDestination,
-                )
+                    // Zig price display
+                    RideFareRow(
+                        logoId = R.drawable.zig_logo,
+                        appName = "Zig",
+                        price = zigPriceState.value,
+                        lastUpdated = lastUpdatedZigState.value,
+                        duration = zigDuration.value,
+                        onSwitchToApp = { switchToZig(context) },
+                        lastSearchedDestination = lastSearchedDestination,
+                    )
+                }
             }
+            ServiceStatusBadge(
+                isEnabled = isServiceEnabled,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp) // Offset from the edge
+            )
         }
+    }
+}
+
+@Composable
+fun ServiceStatusBadge(
+    isEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Surface(
+        modifier = modifier
+            .clickable {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                context.startActivity(intent)
+            },
+        color = colorResource(id = R.color.off_white),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = modifier.padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = if (isEnabled) "✅" else "❌",
+                fontSize = 12.sp
+            )
+            Text(
+                text = if (isEnabled) "Service Active" else "Service Disabled",
+                color = if (isEnabled) colorResource(R.color.floral_green) else androidx.compose.ui.graphics.Color.Red,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+fun SearchField(
+    destination: String,
+    onDestinationChange: (String) -> Unit,
+    onSearchButtonClicked: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = destination,
+        onValueChange = onDestinationChange,
+        label = { Text(stringResource(R.string.enter_destination_field)) }
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Button(
+        onClick = onSearchButtonClicked,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(
+            horizontal = 16.dp,
+            vertical = 6.dp
+        ),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+            containerColor = colorResource(R.color.floral_green)
+        )
+    ) {
+        Text("Check Prices")
     }
 }
 
@@ -486,6 +573,7 @@ fun RideFareRow(
     }
 }
 
+
 fun openAppByDeeplink(context: Context, deeplink: String, appName: String) {
     val uri = deeplink.toUri()
     val intent = Intent(Intent.ACTION_VIEW,  uri).apply {
@@ -569,6 +657,15 @@ fun switchToZig(context: Context) {
     switchToApp(context, zigPackageName, "Zig")
 }
 
+private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+    val expectedComponentName = ComponentName(context, UniversalRideScraperService::class.java)
+    val enabledServices = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ) ?: return false
+
+    return enabledServices.contains(expectedComponentName.flattenToString())
+}
 
 @Preview(showBackground = true)
 @Composable
