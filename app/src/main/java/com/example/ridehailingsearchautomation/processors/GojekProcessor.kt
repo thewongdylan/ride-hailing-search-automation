@@ -216,22 +216,54 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
 
     private fun scrapePrice(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.SCRAPING_PRICE) return
-        var currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing")
-        if (currPriceNode.isEmpty()) {
-            Log.d(TAG, "Price not found, trying with voucher")
-            currPriceNode = rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/text_service_pricing_with_voucher")
-        }
-        val currPrice = currPriceNode.firstOrNull()?.text?.toString()
-        isPriceFound = true
-        Log.d(TAG, "Found currPrice: $currPrice")
+        val gocarNode = findNodeByText(rootNode, "GoCar")
+        if (gocarNode != null) {
+            val rowContainer = findServiceRowContainer(gocarNode)
+            if (rowContainer != null) {
+                val currPrice = findPricePattern(rowContainer)
+                isPriceFound = true
+                Log.d(TAG, "Found currPrice: $currPrice")
 
-        if (currPrice != null) {
-            broadcastPriceAndReturn(currPrice, "COM_EXAMPLE_GOJEK_PRICE_UPDATE")
-            Log.d(TAG, "Broadcasted price: $currPrice")
+                if (currPrice != null) {
+                    broadcastPriceAndReturn(currPrice, "COM_EXAMPLE_GOJEK_PRICE_UPDATE")
+                    Log.d(TAG, "Broadcasted price: $currPrice")
 
-            currState = AutomationState.IDLE
-            destinationToType = null
-            Log.d(TAG, "Workflow complete, reset state to IDLE")
+                    currState = AutomationState.IDLE
+                    destinationToType = null
+                    Log.d(TAG, "Workflow complete, reset state to IDLE")
+                }
+            }
         }
+
+    }
+
+    private fun findServiceRowContainer(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current = node
+        repeat(5) {
+            current.parent?.let {
+                current = it
+                if (current.className.contains("ViewGroup") || current.className.contains("FrameLayout")) {
+                    return current
+                }
+            }
+        }
+        return null
+    }
+
+    private fun findPricePattern(root: AccessibilityNodeInfo): String? {
+        val queue = mutableListOf(root)
+        while (queue.isNotEmpty()) {
+            val node = queue.removeAt(0)
+            val text = node.text?.toString() ?: ""
+
+            if (text.contains("S$") && text.any { it.isDigit() }) {
+                return text
+            }
+
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        return null
     }
 }
