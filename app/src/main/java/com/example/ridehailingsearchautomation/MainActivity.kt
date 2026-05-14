@@ -265,7 +265,7 @@ fun RHSAApp(
     onSearchTriggered: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var destination by remember { mutableStateOf("bedok mall") }
+    var destination by remember { mutableStateOf("510190") }
     val context = LocalContext.current
     val fetchingPriceText = stringResource(R.string.fetching_price)
     var isServiceEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }

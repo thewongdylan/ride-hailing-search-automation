@@ -115,13 +115,21 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
 
     private fun selectFirstSearchResult(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
+        val destination = destinationToType ?: return
+        val isPostalCode = destination.matches(Regex("^\\d{6}$"))
+
         val recyclerViews = mutableListOf<AccessibilityNodeInfo>()
         findNodesByClass(rootNode, "androidx.recyclerview.widget.RecyclerView", recyclerViews)
         val poiTitles = recyclerViews.firstOrNull { it.isVisibleToUser && it.childCount > 0 }
-        val tokens = destinationToType?.split(" ") ?: emptyList()
+        val tokens = destination.split(" ")
 
         if (poiTitles != null) {
             val firstResult = poiTitles.getChild(0) ?: return
+            if (isPostalCode) {
+                Log.d(TAG, "Postal code detected, clicking first result directly")
+                executeResultClick(rootNode, firstResult)
+                return
+            }
             val firstResultRaw = firstResult.text?.toString() ?: ""
             Log.d(TAG, "Checking $firstResultRaw against tokens: $tokens")
 
@@ -141,27 +149,10 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
                         val freshResults = freshLists.firstOrNull { it.childCount > 0 }
 
                         val nodeToClick = freshResults?.getChild(0)
-                        val clickableRow = findClickableParent(nodeToClick)
-                        if (clickableRow != null) {
-                            val success =
-                                clickableRow.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                            if (success) {
-                                val xButtons =
-                                    rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131371946")
-                                if (xButtons.isNotEmpty()) {
-                                    val clickableX = findClickableParent(xButtons[0])
-                                    clickableX?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                                    Log.d(TAG, "Clicked 'X' button to clear search query")
-                                }
-
-                                currState = AutomationState.CONFIRMING_PICKUP
-                                resultsVisibleStartTime = 0L
-                                Log.d(TAG, "Clicked first result after 1.5s delay")
-                            }
+                        executeResultClick(rootNode, nodeToClick ?: return@postDelayed)
                         } else {
                             Log.d(TAG, "Could not find clickable element")
                         }
-                    }
                     isClickPending = false
                 }, 1000)
             } else {
@@ -170,6 +161,27 @@ class GojekProcessor(override val service: AccessibilityService) : BaseScraperPr
                 if (System.currentTimeMillis() % 2000 < 100) {
                     Log.d(TAG, "Ignoring stale results, waiting for network...")
                 }
+            }
+        }
+    }
+
+    private fun executeResultClick(rootNode: AccessibilityNodeInfo, nodeToClick: AccessibilityNodeInfo) {
+        val clickableRow = findClickableParent(nodeToClick)
+        if (clickableRow != null) {
+            val success =
+                clickableRow.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (success) {
+                val xButtons =
+                    rootNode.findAccessibilityNodeInfosByViewId("com.gojek.app:id/2131371946")
+                if (xButtons.isNotEmpty()) {
+                    val clickableX = findClickableParent(xButtons[0])
+                    clickableX?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    Log.d(TAG, "Clicked 'X' button to clear search query")
+                }
+
+                currState = AutomationState.CONFIRMING_PICKUP
+                resultsVisibleStartTime = 0L
+                Log.d(TAG, "Clicked first result after 1.5s delay")
             }
         }
     }

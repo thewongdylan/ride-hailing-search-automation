@@ -156,7 +156,17 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
 
     private fun selectFirstSearchResult(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
+        val destination = destinationToType ?: return
+        val isPostalCode = destination.matches(Regex("^\\d{6}$"))
+
         val poiTitles = rootNode.findAccessibilityNodeInfosByViewId("com.codigo.comfort:id/lblRecentLocationTradeName")
+        val firstResult = poiTitles.firstOrNull()
+        if (isPostalCode) {
+            Log.d(TAG, "Postal code detected, clicking first result directly")
+            executeClickResult(rootNode, firstResult ?: return)
+            return
+        }
+
         val tokens = destinationToType?.split(" ") ?: emptyList()
         Log.d(TAG, "Checking ${poiTitles.size} results for '$destinationToType' using $tokens")
 
@@ -168,12 +178,7 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
         Log.d(TAG, "Found targetPoiNode: $targetPoiNode")
 
         if (targetPoiNode != null) {
-            val clickableNode = findClickableParent(targetPoiNode)
-            val success = clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            if (success == true) {
-                Log.d(TAG, "Clicked first result")
-                currState = AutomationState.CONFIRMING_PICKUP
-            }
+            executeClickResult(rootNode, targetPoiNode)
         }  else {
             if (poiTitles.isEmpty()) {
                 resultsVisibleStartTime = 0L
@@ -184,7 +189,15 @@ class ZigProcessor(override val service: AccessibilityService) : BaseScraperProc
                 }
             }
         }
+    }
 
+    private fun executeClickResult(rootNode: AccessibilityNodeInfo, nodeToClick: AccessibilityNodeInfo) {
+        val clickableNode = findClickableParent(nodeToClick)
+        val success = clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (success == true) {
+            Log.d(TAG, "Clicked first result")
+            currState = AutomationState.CONFIRMING_PICKUP
+        }
     }
 
     private fun confirmPickup(rootNode: AccessibilityNodeInfo) {

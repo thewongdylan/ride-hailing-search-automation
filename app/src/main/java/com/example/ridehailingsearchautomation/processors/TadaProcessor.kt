@@ -164,27 +164,36 @@ class TadaProcessor(override val service: AccessibilityService) : BaseScraperPro
 
     private fun selectFirstSearchResult(rootNode: AccessibilityNodeInfo) {
         if (currState != AutomationState.WAITING_FOR_RESULTS) return
+        val destination = destinationToType ?: return
+        val isPostalCode = destination.matches(Regex("^\\d{6}$"))
+
+
         val poiTitles = findNodeByViewId(rootNode,"SearchContent_Box_Column_SearchListItem")
+        val firstResult = poiTitles?.getChild(0) ?: return
+        if (isPostalCode) {
+            Log.d(TAG, "Postal code detected, clicking first result directly")
+            executeResultClick(rootNode, firstResult)
+            return
+        }
+
         val tokens = destinationToType?.split(" ") ?: emptyList()
         val targetPoiNode = findNodeByTokens(poiTitles, tokens)
         Log.d(TAG, "Found targetPoiNode: $targetPoiNode")
 
         if (targetPoiNode != null) {
-            val clickableNode = findClickableParent(targetPoiNode)
-            val success = clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            if (success == true) {
-                Log.d(TAG, "Clicked first result")
-                currState = AutomationState.CONFIRMING_DESTINATION
-            }
+            executeResultClick(rootNode, targetPoiNode)
         }  else {
-            if (poiTitles != null) {
-                resultsVisibleStartTime = 0L
-                Log.d(TAG, "No results on screen. Timer reset.")
-            } else {
-                if (System.currentTimeMillis() % 2000 < 100) {
-                    Log.d(TAG, "Ignoring stale results, waiting for network...")
-                }
-            }
+            resultsVisibleStartTime = 0L
+            Log.d(TAG, "No results on screen. Timer reset.")
+        }
+    }
+
+    private fun executeResultClick(rootNode: AccessibilityNodeInfo, nodeToClick: AccessibilityNodeInfo) {
+        val clickableNode = findClickableParent(nodeToClick)
+        val success = clickableNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (success == true) {
+            Log.d(TAG, "Clicked first result")
+            currState = AutomationState.CONFIRMING_DESTINATION
         }
     }
 
