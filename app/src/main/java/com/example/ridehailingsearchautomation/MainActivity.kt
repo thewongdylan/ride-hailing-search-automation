@@ -403,6 +403,13 @@ fun RHSAApp(
                         lastSearchedDestination = lastSearchedDestination,
                     )
                 }
+
+                // App version/date
+                Text(
+                    text = "App updated on ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())}",
+                    fontSize = 10.sp,
+                    color = colorResource(R.color.black)
+                )
             }
             ServiceStatusBadge(
                 isEnabled = isServiceEnabled,
